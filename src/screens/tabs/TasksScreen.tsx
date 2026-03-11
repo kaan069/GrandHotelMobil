@@ -39,6 +39,7 @@ import StaffScreen from '../reports/StaffScreen';
 import ReportsScreen from '../reports/ReportsScreen';
 import RoomServiceScreen from '../tasks/RoomServiceScreen';
 import RoomStatusScreen from '../tasks/RoomStatusScreen';
+import ComplaintsScreen from '../tasks/ComplaintsScreen';
 
 interface TaskModule {
   id: string;
@@ -76,6 +77,7 @@ const TASK_MODULES: Record<string, TaskModule[]> = {
     { id: 'fault-create', label: 'Arıza Bildir', icon: 'warning-outline', color: '#EF4444', screen: 'FaultCreate' },
   ],
   [ROLES.MANAGER]: [
+    { id: 'complaints', label: 'Şikayetler & Öneriler', icon: 'chatbubbles-outline', color: '#8B5CF6', screen: 'Complaints' },
     { id: 'fault-list', label: 'Arıza Listesi', icon: 'construct-outline', color: '#3B82F6', screen: 'FaultList' },
     { id: 'room-service', label: 'Oda Servisi', icon: 'cafe-outline', color: '#8B5CF6', screen: 'RoomService' },
     { id: 'room-status', label: 'Oda Durumu', icon: 'bed-outline', color: '#06B6D4', screen: 'RoomStatus' },
@@ -85,6 +87,7 @@ const TASK_MODULES: Record<string, TaskModule[]> = {
     { id: 'fault-create', label: 'Arıza Bildir', icon: 'warning-outline', color: '#EF4444', screen: 'FaultCreate' },
   ],
   [ROLES.PATRON]: [
+    { id: 'complaints', label: 'Şikayetler & Öneriler', icon: 'chatbubbles-outline', color: '#8B5CF6', screen: 'Complaints' },
     { id: 'fault-list', label: 'Arıza Listesi', icon: 'construct-outline', color: '#3B82F6', screen: 'FaultList' },
     { id: 'room-service', label: 'Oda Servisi', icon: 'cafe-outline', color: '#8B5CF6', screen: 'RoomService' },
     { id: 'room-status', label: 'Oda Durumu', icon: 'bed-outline', color: '#06B6D4', screen: 'RoomStatus' },
@@ -108,6 +111,7 @@ const SCREEN_MAP: Record<string, React.ComponentType<{ onClose: () => void }>> =
   Reports: ReportsScreen,
   RoomService: RoomServiceScreen,
   RoomStatus: RoomStatusScreen,
+  Complaints: ComplaintsScreen,
 };
 
 const TasksScreen: React.FC = () => {

@@ -152,9 +152,33 @@ export const HOTEL_ROOMS: readonly string[] = [
   '401',
 ];
 
+/* ==================== ŞİKAYET DURUMLARI ==================== */
+
+export const COMPLAINT_STATUS = {
+  NEW: 'new',
+  READ: 'read',
+  RESOLVED: 'resolved',
+} as const;
+
+export type ComplaintStatus = typeof COMPLAINT_STATUS[keyof typeof COMPLAINT_STATUS];
+
+export const COMPLAINT_STATUS_LABELS: Record<string, string> = {
+  [COMPLAINT_STATUS.NEW]: 'Yeni',
+  [COMPLAINT_STATUS.READ]: 'Okundu',
+  [COMPLAINT_STATUS.RESOLVED]: 'Çözüldü',
+};
+
+export const COMPLAINT_STATUS_COLORS: Record<string, string> = {
+  [COMPLAINT_STATUS.NEW]: '#EF4444',
+  [COMPLAINT_STATUS.READ]: '#F59E0B',
+  [COMPLAINT_STATUS.RESOLVED]: '#22C55E',
+};
+
 /* ==================== STORAGE KEYS ==================== */
 
 export const EMPLOYEES_STORAGE_KEY = 'grandhotel_employees';
+export const SHIFTS_STORAGE_KEY = 'grandhotel_shifts';
+export const COMPLAINTS_STORAGE_KEY = 'grandhotel_complaints';
 
 /* ==================== UYGULAMA AYARLARI ==================== */
 
