@@ -99,6 +99,59 @@ export const LEAVE_TYPES: readonly LabelValueOption[] = [
   { value: 'unpaid', label: 'Ücretsiz İzin' },
 ];
 
+/* ==================== ODA DURUMLARI ==================== */
+
+export const ROOM_STATUS = {
+  AVAILABLE: 'available',
+  OCCUPIED: 'occupied',
+  DIRTY: 'dirty',
+  MAINTENANCE: 'maintenance',
+  BLOCKED: 'blocked',
+} as const;
+
+export type RoomStatus = typeof ROOM_STATUS[keyof typeof ROOM_STATUS];
+
+export const ROOM_STATUS_LABELS: Record<string, string> = {
+  [ROOM_STATUS.AVAILABLE]: 'Müsait',
+  [ROOM_STATUS.OCCUPIED]: 'Dolu',
+  [ROOM_STATUS.DIRTY]: 'Kirli',
+  [ROOM_STATUS.MAINTENANCE]: 'Bakımda',
+  [ROOM_STATUS.BLOCKED]: 'Bloke',
+};
+
+export const ROOM_STATUS_COLORS: Record<string, string> = {
+  [ROOM_STATUS.AVAILABLE]: '#22C55E',
+  [ROOM_STATUS.OCCUPIED]: '#EF4444',
+  [ROOM_STATUS.DIRTY]: '#F97316',
+  [ROOM_STATUS.MAINTENANCE]: '#3B82F6',
+  [ROOM_STATUS.BLOCKED]: '#64748B',
+};
+
+/* ==================== ODA SERVİSİ ==================== */
+
+export const ROOM_SERVICE_CATEGORIES: readonly LabelValueOption[] = [
+  { value: 'drink', label: 'İçecek' },
+  { value: 'food', label: 'Yiyecek' },
+  { value: 'amenity', label: 'Oda Malzemesi' },
+  { value: 'other', label: 'Diğer' },
+];
+
+export const ORDER_STATUS = {
+  PENDING: 'pending',
+  DELIVERED: 'delivered',
+} as const;
+
+export type OrderStatus = typeof ORDER_STATUS[keyof typeof ORDER_STATUS];
+
+/* ==================== OTEL ODALARI ==================== */
+
+export const HOTEL_ROOMS: readonly string[] = [
+  '101', '102', '103',
+  '201', '202', '203',
+  '301', '302', '303',
+  '401',
+];
+
 /* ==================== STORAGE KEYS ==================== */
 
 export const EMPLOYEES_STORAGE_KEY = 'grandhotel_employees';

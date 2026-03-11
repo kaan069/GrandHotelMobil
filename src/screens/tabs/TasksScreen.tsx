@@ -37,6 +37,8 @@ import FaultListScreen from '../tasks/FaultListScreen';
 import StockScreen from '../tasks/StockScreen';
 import StaffScreen from '../reports/StaffScreen';
 import ReportsScreen from '../reports/ReportsScreen';
+import RoomServiceScreen from '../tasks/RoomServiceScreen';
+import RoomStatusScreen from '../tasks/RoomStatusScreen';
 
 interface TaskModule {
   id: string;
@@ -57,6 +59,7 @@ const TASK_MODULES: Record<string, TaskModule[]> = {
     { id: 'fault-create', label: 'Arıza Bildir', icon: 'warning-outline', color: '#EF4444', screen: 'FaultCreate' },
   ],
   [ROLES.WAITER]: [
+    { id: 'room-service', label: 'Oda Servisi', icon: 'cafe-outline', color: '#8B5CF6', screen: 'RoomService' },
     { id: 'shopping', label: 'Alışveriş Listesi', icon: 'cart-outline', color: '#22C55E', screen: 'ShoppingList' },
     { id: 'fault-create', label: 'Arıza Bildir', icon: 'warning-outline', color: '#EF4444', screen: 'FaultCreate' },
   ],
@@ -65,23 +68,29 @@ const TASK_MODULES: Record<string, TaskModule[]> = {
     { id: 'fault-create', label: 'Arıza Bildir', icon: 'warning-outline', color: '#EF4444', screen: 'FaultCreate' },
   ],
   [ROLES.HOUSEKEEPER]: [
+    { id: 'room-status', label: 'Oda Durumu', icon: 'bed-outline', color: '#06B6D4', screen: 'RoomStatus' },
     { id: 'fault-create', label: 'Arıza Bildir', icon: 'warning-outline', color: '#EF4444', screen: 'FaultCreate' },
   ],
   [ROLES.RECEPTION]: [
+    { id: 'room-service', label: 'Oda Servisi', icon: 'cafe-outline', color: '#8B5CF6', screen: 'RoomService' },
     { id: 'fault-create', label: 'Arıza Bildir', icon: 'warning-outline', color: '#EF4444', screen: 'FaultCreate' },
   ],
   [ROLES.MANAGER]: [
     { id: 'fault-list', label: 'Arıza Listesi', icon: 'construct-outline', color: '#3B82F6', screen: 'FaultList' },
+    { id: 'room-service', label: 'Oda Servisi', icon: 'cafe-outline', color: '#8B5CF6', screen: 'RoomService' },
+    { id: 'room-status', label: 'Oda Durumu', icon: 'bed-outline', color: '#06B6D4', screen: 'RoomStatus' },
     { id: 'shopping', label: 'Alışveriş Listesi', icon: 'cart-outline', color: '#22C55E', screen: 'ShoppingList' },
-    { id: 'stock', label: 'Stok Yönetimi', icon: 'cube-outline', color: '#8B5CF6', screen: 'Stock' },
+    { id: 'stock', label: 'Stok Yönetimi', icon: 'cube-outline', color: '#EC4899', screen: 'Stock' },
     { id: 'reports', label: 'Raporlar', icon: 'bar-chart-outline', color: '#F97316', screen: 'Reports' },
     { id: 'fault-create', label: 'Arıza Bildir', icon: 'warning-outline', color: '#EF4444', screen: 'FaultCreate' },
   ],
   [ROLES.PATRON]: [
     { id: 'fault-list', label: 'Arıza Listesi', icon: 'construct-outline', color: '#3B82F6', screen: 'FaultList' },
+    { id: 'room-service', label: 'Oda Servisi', icon: 'cafe-outline', color: '#8B5CF6', screen: 'RoomService' },
+    { id: 'room-status', label: 'Oda Durumu', icon: 'bed-outline', color: '#06B6D4', screen: 'RoomStatus' },
     { id: 'shopping', label: 'Alışveriş Listesi', icon: 'cart-outline', color: '#22C55E', screen: 'ShoppingList' },
     { id: 'meal', label: 'Yemek Programı', icon: 'restaurant-outline', color: '#F59E0B', screen: 'MealProgram' },
-    { id: 'stock', label: 'Stok Yönetimi', icon: 'cube-outline', color: '#8B5CF6', screen: 'Stock' },
+    { id: 'stock', label: 'Stok Yönetimi', icon: 'cube-outline', color: '#EC4899', screen: 'Stock' },
     { id: 'staff', label: 'Personel Yönetimi', icon: 'people-outline', color: '#1565C0', screen: 'Staff' },
     { id: 'reports', label: 'Raporlar', icon: 'bar-chart-outline', color: '#F97316', screen: 'Reports' },
     { id: 'fault-create', label: 'Arıza Bildir', icon: 'warning-outline', color: '#EF4444', screen: 'FaultCreate' },
@@ -97,6 +106,8 @@ const SCREEN_MAP: Record<string, React.ComponentType<{ onClose: () => void }>> =
   Stock: StockScreen,
   Staff: StaffScreen,
   Reports: ReportsScreen,
+  RoomService: RoomServiceScreen,
+  RoomStatus: RoomStatusScreen,
 };
 
 const TasksScreen: React.FC = () => {
