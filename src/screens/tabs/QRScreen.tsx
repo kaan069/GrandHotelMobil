@@ -62,20 +62,48 @@ const QRScreen: React.FC = () => {
     );
   };
 
+  /** Bugün açık giriş kaydı var mı kontrol et */
+  const detectShiftType = async (): Promise<'entry' | 'exit'> => {
+    if (!user) return 'entry';
+    try {
+      const stored = await AsyncStorage.getItem(SHIFTS_STORAGE_KEY);
+      const all: ShiftEntry[] = stored ? JSON.parse(stored) : [];
+      const today = new Date().toISOString().split('T')[0];
+      const todayShifts = all.filter(
+        (s) => s.staffNumber === user.staffNumber && s.timestamp.startsWith(today)
+      );
+      const entries = todayShifts.filter((s) => s.type === 'entry').length;
+      const exits = todayShifts.filter((s) => s.type === 'exit').length;
+      // Giriş sayısı çıkıştan fazlaysa → açık mesai var → çıkış yap
+      return entries > exits ? 'exit' : 'entry';
+    } catch {
+      return 'entry';
+    }
+  };
+
   /** QR kod okunduğunda */
-  const handleBarCodeScanned = ({ data }: BarcodeScanResult) => {
+  const handleBarCodeScanned = async ({ data }: BarcodeScanResult) => {
     if (scanned) return;
     setScanned(true);
 
     const lower = data.toLowerCase().trim();
 
-    /* Mesai QR kodları */
-    if (lower === 'mesai:giris' || lower === 'mesai:entry') {
-      saveShiftEntry('entry');
-      return;
-    }
-    if (lower === 'mesai:cikis' || lower === 'mesai:exit') {
-      saveShiftEntry('exit');
+    /* Mesai QR kodları — tek kod veya ayrı giriş/çıkış */
+    if (
+      lower === 'mesai:grandhotel' ||
+      lower === 'mesai:giris' || lower === 'mesai:entry' ||
+      lower === 'mesai:cikis' || lower === 'mesai:exit'
+    ) {
+      let shiftType: 'entry' | 'exit';
+      if (lower === 'mesai:giris' || lower === 'mesai:entry') {
+        shiftType = 'entry';
+      } else if (lower === 'mesai:cikis' || lower === 'mesai:exit') {
+        shiftType = 'exit';
+      } else {
+        // Tek QR: otomatik tespit
+        shiftType = await detectShiftType();
+      }
+      saveShiftEntry(shiftType);
       return;
     }
 
@@ -127,7 +155,7 @@ const QRScreen: React.FC = () => {
             <View style={[styles.corner, styles.bottomRight]} />
           </View>
           <Text style={styles.scanText}>QR kodu çerçeveye yerleştirin</Text>
-          <Text style={styles.hintText}>Mesai giriş/çıkış veya genel QR</Text>
+          <Text style={styles.hintText}>Mesai QR okutun — otomatik giriş/çıkış</Text>
         </View>
       </CameraView>
     </View>

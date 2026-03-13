@@ -62,18 +62,23 @@ const TASK_MODULES: Record<string, TaskModule[]> = {
   [ROLES.WAITER]: [
     { id: 'room-service', label: 'Oda Servisi', icon: 'cafe-outline', color: '#8B5CF6', screen: 'RoomService' },
     { id: 'shopping', label: 'Alışveriş Listesi', icon: 'cart-outline', color: '#22C55E', screen: 'ShoppingList' },
+    { id: 'meal', label: 'Yemek Programı', icon: 'restaurant-outline', color: '#F59E0B', screen: 'MealProgram' },
     { id: 'fault-create', label: 'Arıza Bildir', icon: 'warning-outline', color: '#EF4444', screen: 'FaultCreate' },
   ],
   [ROLES.TECHNICIAN]: [
     { id: 'fault-list', label: 'Arıza Listesi', icon: 'construct-outline', color: '#3B82F6', screen: 'FaultList' },
+    { id: 'meal', label: 'Yemek Programı', icon: 'restaurant-outline', color: '#F59E0B', screen: 'MealProgram' },
     { id: 'fault-create', label: 'Arıza Bildir', icon: 'warning-outline', color: '#EF4444', screen: 'FaultCreate' },
   ],
   [ROLES.HOUSEKEEPER]: [
     { id: 'room-status', label: 'Oda Durumu', icon: 'bed-outline', color: '#06B6D4', screen: 'RoomStatus' },
+    { id: 'meal', label: 'Yemek Programı', icon: 'restaurant-outline', color: '#F59E0B', screen: 'MealProgram' },
     { id: 'fault-create', label: 'Arıza Bildir', icon: 'warning-outline', color: '#EF4444', screen: 'FaultCreate' },
   ],
   [ROLES.RECEPTION]: [
     { id: 'room-service', label: 'Oda Servisi', icon: 'cafe-outline', color: '#8B5CF6', screen: 'RoomService' },
+    { id: 'room-status', label: 'Oda Durumu', icon: 'bed-outline', color: '#06B6D4', screen: 'RoomStatus' },
+    { id: 'meal', label: 'Yemek Programı', icon: 'restaurant-outline', color: '#F59E0B', screen: 'MealProgram' },
     { id: 'fault-create', label: 'Arıza Bildir', icon: 'warning-outline', color: '#EF4444', screen: 'FaultCreate' },
   ],
   [ROLES.MANAGER]: [
@@ -82,6 +87,7 @@ const TASK_MODULES: Record<string, TaskModule[]> = {
     { id: 'room-service', label: 'Oda Servisi', icon: 'cafe-outline', color: '#8B5CF6', screen: 'RoomService' },
     { id: 'room-status', label: 'Oda Durumu', icon: 'bed-outline', color: '#06B6D4', screen: 'RoomStatus' },
     { id: 'shopping', label: 'Alışveriş Listesi', icon: 'cart-outline', color: '#22C55E', screen: 'ShoppingList' },
+    { id: 'meal', label: 'Yemek Programı', icon: 'restaurant-outline', color: '#F59E0B', screen: 'MealProgram' },
     { id: 'stock', label: 'Stok Yönetimi', icon: 'cube-outline', color: '#EC4899', screen: 'Stock' },
     { id: 'reports', label: 'Raporlar', icon: 'bar-chart-outline', color: '#F97316', screen: 'Reports' },
     { id: 'fault-create', label: 'Arıza Bildir', icon: 'warning-outline', color: '#EF4444', screen: 'FaultCreate' },

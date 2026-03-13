@@ -16,7 +16,9 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 
 import { AppCard, AppInput, AppButton } from '../../components/common';
+import useAuth from '../../hooks/useAuth';
 import { colors, spacing, fontSize, borderRadius } from '../../theme';
+import { ROLES } from '../../utils/constants';
 
 interface MealDay {
   lunch: string;
@@ -44,6 +46,8 @@ const INITIAL_PROGRAM: MealProgram = {
 };
 
 const MealProgramScreen: React.FC<MealProgramScreenProps> = ({ onClose }) => {
+  const { user } = useAuth();
+  const canEdit = user?.role === ROLES.CHEF;
   const [program, setProgram] = useState<MealProgram>(INITIAL_PROGRAM);
   const [editingDay, setEditingDay] = useState<string | null>(null);
 
@@ -63,7 +67,13 @@ const MealProgramScreen: React.FC<MealProgramScreenProps> = ({ onClose }) => {
           <Ionicons name="close" size={28} color={colors.textPrimary} />
         </TouchableOpacity>
         <Text style={styles.title}>Yemek Programı</Text>
-        <View style={{ width: 28 }} />
+        {!canEdit ? (
+          <View style={styles.readOnlyBadge}>
+            <Ionicons name="eye-outline" size={14} color={colors.textSecondary} />
+          </View>
+        ) : (
+          <View style={{ width: 28 }} />
+        )}
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
@@ -74,23 +84,32 @@ const MealProgramScreen: React.FC<MealProgramScreenProps> = ({ onClose }) => {
 
           return (
             <AppCard key={day} style={styles.dayCard}>
-              <TouchableOpacity
-                style={styles.dayHeader}
-                onPress={() => setEditingDay(isEditing ? null : day)}
-              >
-                <View style={styles.dayLeft}>
-                  <View style={[styles.dayDot, hasContent && styles.dayDotActive]} />
-                  <Text style={styles.dayName}>{day}</Text>
+              {canEdit ? (
+                <TouchableOpacity
+                  style={styles.dayHeader}
+                  onPress={() => setEditingDay(isEditing ? null : day)}
+                >
+                  <View style={styles.dayLeft}>
+                    <View style={[styles.dayDot, hasContent && styles.dayDotActive]} />
+                    <Text style={styles.dayName}>{day}</Text>
+                  </View>
+                  <Ionicons
+                    name={isEditing ? 'chevron-up' : 'chevron-down'}
+                    size={20}
+                    color={colors.textSecondary}
+                  />
+                </TouchableOpacity>
+              ) : (
+                <View style={styles.dayHeader}>
+                  <View style={styles.dayLeft}>
+                    <View style={[styles.dayDot, hasContent && styles.dayDotActive]} />
+                    <Text style={styles.dayName}>{day}</Text>
+                  </View>
                 </View>
-                <Ionicons
-                  name={isEditing ? 'chevron-up' : 'chevron-down'}
-                  size={20}
-                  color={colors.textSecondary}
-                />
-              </TouchableOpacity>
+              )}
 
-              {/* Yemek bilgisi (kapalı halde özet) */}
-              {!isEditing && hasContent && (
+              {/* Yemek bilgisi */}
+              {(!isEditing || !canEdit) && hasContent && (
                 <View style={styles.mealSummary}>
                   {meals.lunch ? (
                     <Text style={styles.summaryText}>🍽 {meals.lunch}</Text>
@@ -101,8 +120,14 @@ const MealProgramScreen: React.FC<MealProgramScreenProps> = ({ onClose }) => {
                 </View>
               )}
 
-              {/* Düzenleme modu */}
-              {isEditing && (
+              {!hasContent && !canEdit && (
+                <View style={styles.mealSummary}>
+                  <Text style={styles.emptyText}>Henüz girilmedi</Text>
+                </View>
+              )}
+
+              {/* Düzenleme modu — sadece aşçı */}
+              {canEdit && isEditing && (
                 <View style={styles.editSection}>
                   <AppInput
                     label="Öğle Yemeği"
@@ -154,6 +179,10 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.textPrimary,
   },
+  readOnlyBadge: {
+    width: 28,
+    alignItems: 'center',
+  },
   content: {
     padding: spacing.md,
     paddingBottom: spacing.xxl,
@@ -193,6 +222,11 @@ const styles = StyleSheet.create({
     fontSize: fontSize.sm,
     color: colors.textSecondary,
     marginBottom: 4,
+  },
+  emptyText: {
+    fontSize: fontSize.sm,
+    color: colors.textDisabled,
+    fontStyle: 'italic',
   },
   editSection: {
     marginTop: spacing.md,

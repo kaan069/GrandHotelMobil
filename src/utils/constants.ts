@@ -146,10 +146,12 @@ export type OrderStatus = typeof ORDER_STATUS[keyof typeof ORDER_STATUS];
 /* ==================== OTEL ODALARI ==================== */
 
 export const HOTEL_ROOMS: readonly string[] = [
-  '101', '102', '103',
-  '201', '202', '203',
-  '301', '302', '303',
-  '401',
+  '101', '102', '103', '104', '105', '106', '107', '108',
+  '201', '202', '203', '204', '205', '206', '207', '208',
+  '301', '302', '303', '304', '305', '306', '307', '308',
+  '401', '402', '403', '404', '405', '406', '407', '408',
+  '501', '502', '503', '504', '505', '506', '507', '508',
+  '601', '602', '603', '604', '605', '606', '607', '608',
 ];
 
 /* ==================== ŞİKAYET DURUMLARI ==================== */
@@ -179,6 +181,33 @@ export const COMPLAINT_STATUS_COLORS: Record<string, string> = {
 export const EMPLOYEES_STORAGE_KEY = 'grandhotel_employees';
 export const SHIFTS_STORAGE_KEY = 'grandhotel_shifts';
 export const COMPLAINTS_STORAGE_KEY = 'grandhotel_complaints';
+
+/* ==================== FOLİO KATEGORİLERİ ==================== */
+
+export const FOLIO_CATEGORIES: readonly LabelValueOption[] = [
+  { value: 'room_charge', label: 'Oda Ücreti' },
+  { value: 'minibar', label: 'Minibar' },
+  { value: 'restaurant', label: 'Restoran/Kafe' },
+  { value: 'service', label: 'Hizmet/Servis' },
+  { value: 'discount', label: 'İndirim' },
+  { value: 'payment', label: 'Ödeme' },
+];
+
+export const FOLIO_CATEGORY_LABELS: Record<string, string> = {
+  room_charge: 'Oda Ücreti',
+  minibar: 'Minibar',
+  restaurant: 'Restoran/Kafe',
+  service: 'Hizmet/Servis',
+  discount: 'İndirim',
+  payment: 'Ödeme',
+};
+
+export const PAYMENT_METHODS: readonly LabelValueOption[] = [
+  { value: 'cash', label: 'Nakit' },
+  { value: 'credit_card', label: 'Kredi Kartı' },
+  { value: 'bank_transfer', label: 'Havale/EFT' },
+  { value: 'other', label: 'Diğer' },
+];
 
 /* ==================== UYGULAMA AYARLARI ==================== */
 
