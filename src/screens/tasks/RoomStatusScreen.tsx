@@ -1,23 +1,24 @@
 /**
  * RoomStatusScreen - Oda Durumu Yönetimi
  *
- * Housekeeping, resepsiyon, patron ve müdür odaların durumunu görüntüler.
- * Odaya tıklayınca detay ekranı açılır (bilgi + arıza bildirme).
- * 6 kat × 8 oda = 48 oda
+ * Backend API'den odaları çeker ve durumlarını yönetir.
+ * Housekeeping, resepsiyon, patron ve müdür erişebilir.
  * Durumlar: Müsait / Dolu / Kirli / Bakımda / Bloke
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   FlatList,
   TouchableOpacity,
+  RefreshControl,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
-import { AppCard, StatusChip, EmptyState } from '../../components/common';
+import { AppCard, StatusChip, EmptyState, LoadingState } from '../../components/common';
 import RoomDetailView from '../../components/tasks/RoomDetailView';
 import type { Room } from '../../components/tasks/RoomDetailView';
 import RoomSellView from '../../components/rooms/RoomSellView';
@@ -30,7 +31,10 @@ import {
   ROLES,
 } from '../../utils/constants';
 import useAuth from '../../hooks/useAuth';
-import { RoomGuest } from '../../utils/types';
+import useApi from '../../hooks/useApi';
+import useRoomWebSocket from '../../hooks/useRoomWebSocket';
+import { roomsApi } from '../../services/api';
+import type { ApiRoom } from '../../utils/types';
 
 interface RoomStatusScreenProps {
   onClose: () => void;
@@ -43,68 +47,37 @@ const BED_TYPE_LABELS: Record<string, string> = {
   king: 'King',
 };
 
-/** 48 oda — 6 kat × 8 oda */
-const INITIAL_ROOMS: Room[] = [
-  /* === KAT 1 === */
-  { id: 101, number: '101', bedType: 'single', floor: 1, capacity: 1, status: ROOM_STATUS.AVAILABLE, lastCleaned: '2026-03-11T08:00:00', cleanedBy: 'Zeynep Arslan' },
-  { id: 102, number: '102', bedType: 'double', floor: 1, capacity: 2, status: ROOM_STATUS.OCCUPIED, guestName: 'Ali Yılmaz', lastCleaned: '2026-03-10T09:30:00', cleanedBy: 'Zeynep Arslan' },
-  { id: 103, number: '103', bedType: 'double', floor: 1, capacity: 2, status: ROOM_STATUS.DIRTY, lastCleaned: '2026-03-10T08:00:00', cleanedBy: 'Zeynep Arslan' },
-  { id: 104, number: '104', bedType: 'twin', floor: 1, capacity: 2, status: ROOM_STATUS.AVAILABLE, lastCleaned: '2026-03-11T07:30:00', cleanedBy: 'Zeynep Arslan' },
-  { id: 105, number: '105', bedType: 'single', floor: 1, capacity: 1, status: ROOM_STATUS.OCCUPIED, guestName: 'Fatma Şen', lastCleaned: '2026-03-09T10:00:00', cleanedBy: 'Zeynep Arslan' },
-  { id: 106, number: '106', bedType: 'double', floor: 1, capacity: 2, status: ROOM_STATUS.AVAILABLE, lastCleaned: '2026-03-11T09:00:00', cleanedBy: 'Zeynep Arslan' },
-  { id: 107, number: '107', bedType: 'king', floor: 1, capacity: 2, status: ROOM_STATUS.DIRTY, lastCleaned: '2026-03-09T11:00:00', cleanedBy: 'Zeynep Arslan' },
-  { id: 108, number: '108', bedType: 'twin', floor: 1, capacity: 2, status: ROOM_STATUS.MAINTENANCE, lastCleaned: '2026-03-08T10:00:00', cleanedBy: 'Zeynep Arslan' },
+/** Backend ApiRoom → Frontend Room interface'ine dönüştürür */
+const mapApiRoomToRoom = (apiRoom: ApiRoom): Room => ({
+  id: apiRoom.id,
+  number: apiRoom.roomNumber,
+  bedType: apiRoom.bedType,
+  floor: apiRoom.floor,
+  capacity: apiRoom.capacity,
+  status: apiRoom.status,
+  guestName: apiRoom.guestName || undefined,
+});
 
-  /* === KAT 2 === */
-  { id: 201, number: '201', bedType: 'double', floor: 2, capacity: 2, status: ROOM_STATUS.AVAILABLE, lastCleaned: '2026-03-11T09:00:00', cleanedBy: 'Zeynep Arslan' },
-  { id: 202, number: '202', bedType: 'king', floor: 2, capacity: 2, status: ROOM_STATUS.OCCUPIED, guestName: 'Ayşe Demir', lastCleaned: '2026-03-09T10:00:00', cleanedBy: 'Zeynep Arslan' },
-  { id: 203, number: '203', bedType: 'twin', floor: 2, capacity: 2, status: ROOM_STATUS.DIRTY, lastCleaned: '2026-03-09T11:00:00', cleanedBy: 'Zeynep Arslan' },
-  { id: 204, number: '204', bedType: 'single', floor: 2, capacity: 1, status: ROOM_STATUS.AVAILABLE, lastCleaned: '2026-03-11T08:30:00', cleanedBy: 'Zeynep Arslan' },
-  { id: 205, number: '205', bedType: 'double', floor: 2, capacity: 2, status: ROOM_STATUS.OCCUPIED, guestName: 'Hasan Çelik', lastCleaned: '2026-03-10T07:00:00', cleanedBy: 'Zeynep Arslan' },
-  { id: 206, number: '206', bedType: 'king', floor: 2, capacity: 2, status: ROOM_STATUS.AVAILABLE, lastCleaned: '2026-03-11T10:00:00', cleanedBy: 'Zeynep Arslan' },
-  { id: 207, number: '207', bedType: 'twin', floor: 2, capacity: 2, status: ROOM_STATUS.BLOCKED, lastCleaned: '2026-03-07T10:00:00', cleanedBy: 'Zeynep Arslan' },
-  { id: 208, number: '208', bedType: 'double', floor: 2, capacity: 2, status: ROOM_STATUS.DIRTY, lastCleaned: '2026-03-10T06:00:00', cleanedBy: 'Zeynep Arslan' },
-
-  /* === KAT 3 === */
-  { id: 301, number: '301', bedType: 'king', floor: 3, capacity: 3, status: ROOM_STATUS.AVAILABLE, lastCleaned: '2026-03-11T07:00:00', cleanedBy: 'Zeynep Arslan' },
-  { id: 302, number: '302', bedType: 'double', floor: 3, capacity: 2, status: ROOM_STATUS.MAINTENANCE, lastCleaned: '2026-03-08T10:00:00', cleanedBy: 'Zeynep Arslan' },
-  { id: 303, number: '303', bedType: 'single', floor: 3, capacity: 1, status: ROOM_STATUS.BLOCKED, lastCleaned: '2026-03-07T10:00:00', cleanedBy: 'Zeynep Arslan' },
-  { id: 304, number: '304', bedType: 'double', floor: 3, capacity: 2, status: ROOM_STATUS.OCCUPIED, guestName: 'Elif Korkmaz', lastCleaned: '2026-03-10T09:00:00', cleanedBy: 'Zeynep Arslan' },
-  { id: 305, number: '305', bedType: 'twin', floor: 3, capacity: 2, status: ROOM_STATUS.AVAILABLE, lastCleaned: '2026-03-11T08:00:00', cleanedBy: 'Zeynep Arslan' },
-  { id: 306, number: '306', bedType: 'king', floor: 3, capacity: 3, status: ROOM_STATUS.DIRTY, lastCleaned: '2026-03-09T12:00:00', cleanedBy: 'Zeynep Arslan' },
-  { id: 307, number: '307', bedType: 'single', floor: 3, capacity: 1, status: ROOM_STATUS.OCCUPIED, guestName: 'Murat Aydın', lastCleaned: '2026-03-10T08:00:00', cleanedBy: 'Zeynep Arslan' },
-  { id: 308, number: '308', bedType: 'double', floor: 3, capacity: 2, status: ROOM_STATUS.AVAILABLE, lastCleaned: '2026-03-11T09:30:00', cleanedBy: 'Zeynep Arslan' },
-
-  /* === KAT 4 === */
-  { id: 401, number: '401', bedType: 'king', floor: 4, capacity: 3, status: ROOM_STATUS.OCCUPIED, guestName: 'Mehmet Kaya', lastCleaned: '2026-03-10T07:30:00', cleanedBy: 'Zeynep Arslan' },
-  { id: 402, number: '402', bedType: 'double', floor: 4, capacity: 2, status: ROOM_STATUS.AVAILABLE, lastCleaned: '2026-03-11T08:00:00', cleanedBy: 'Zeynep Arslan' },
-  { id: 403, number: '403', bedType: 'twin', floor: 4, capacity: 2, status: ROOM_STATUS.DIRTY, lastCleaned: '2026-03-10T07:00:00', cleanedBy: 'Zeynep Arslan' },
-  { id: 404, number: '404', bedType: 'single', floor: 4, capacity: 1, status: ROOM_STATUS.AVAILABLE, lastCleaned: '2026-03-11T07:00:00', cleanedBy: 'Zeynep Arslan' },
-  { id: 405, number: '405', bedType: 'king', floor: 4, capacity: 3, status: ROOM_STATUS.OCCUPIED, guestName: 'Selin Yıldız', lastCleaned: '2026-03-09T09:00:00', cleanedBy: 'Zeynep Arslan' },
-  { id: 406, number: '406', bedType: 'double', floor: 4, capacity: 2, status: ROOM_STATUS.MAINTENANCE, lastCleaned: '2026-03-08T11:00:00', cleanedBy: 'Zeynep Arslan' },
-  { id: 407, number: '407', bedType: 'twin', floor: 4, capacity: 2, status: ROOM_STATUS.AVAILABLE, lastCleaned: '2026-03-11T10:00:00', cleanedBy: 'Zeynep Arslan' },
-  { id: 408, number: '408', bedType: 'double', floor: 4, capacity: 2, status: ROOM_STATUS.OCCUPIED, guestName: 'Burak Özkan', lastCleaned: '2026-03-10T08:30:00', cleanedBy: 'Zeynep Arslan' },
-
-  /* === KAT 5 === */
-  { id: 501, number: '501', bedType: 'king', floor: 5, capacity: 3, status: ROOM_STATUS.AVAILABLE, lastCleaned: '2026-03-11T07:30:00', cleanedBy: 'Zeynep Arslan' },
-  { id: 502, number: '502', bedType: 'double', floor: 5, capacity: 2, status: ROOM_STATUS.OCCUPIED, guestName: 'Deniz Aksoy', lastCleaned: '2026-03-09T10:00:00', cleanedBy: 'Zeynep Arslan' },
-  { id: 503, number: '503', bedType: 'twin', floor: 5, capacity: 2, status: ROOM_STATUS.DIRTY, lastCleaned: '2026-03-10T06:30:00', cleanedBy: 'Zeynep Arslan' },
-  { id: 504, number: '504', bedType: 'single', floor: 5, capacity: 1, status: ROOM_STATUS.AVAILABLE, lastCleaned: '2026-03-11T08:00:00', cleanedBy: 'Zeynep Arslan' },
-  { id: 505, number: '505', bedType: 'double', floor: 5, capacity: 2, status: ROOM_STATUS.BLOCKED, lastCleaned: '2026-03-06T10:00:00', cleanedBy: 'Zeynep Arslan' },
-  { id: 506, number: '506', bedType: 'king', floor: 5, capacity: 3, status: ROOM_STATUS.OCCUPIED, guestName: 'Zehra Tan', lastCleaned: '2026-03-10T09:00:00', cleanedBy: 'Zeynep Arslan' },
-  { id: 507, number: '507', bedType: 'twin', floor: 5, capacity: 2, status: ROOM_STATUS.AVAILABLE, lastCleaned: '2026-03-11T09:00:00', cleanedBy: 'Zeynep Arslan' },
-  { id: 508, number: '508', bedType: 'double', floor: 5, capacity: 2, status: ROOM_STATUS.DIRTY, lastCleaned: '2026-03-09T11:30:00', cleanedBy: 'Zeynep Arslan' },
-
-  /* === KAT 6 === */
-  { id: 601, number: '601', bedType: 'king', floor: 6, capacity: 3, status: ROOM_STATUS.OCCUPIED, guestName: 'Can Eren', lastCleaned: '2026-03-10T08:00:00', cleanedBy: 'Zeynep Arslan' },
-  { id: 602, number: '602', bedType: 'double', floor: 6, capacity: 2, status: ROOM_STATUS.AVAILABLE, lastCleaned: '2026-03-11T07:00:00', cleanedBy: 'Zeynep Arslan' },
-  { id: 603, number: '603', bedType: 'twin', floor: 6, capacity: 2, status: ROOM_STATUS.AVAILABLE, lastCleaned: '2026-03-11T08:30:00', cleanedBy: 'Zeynep Arslan' },
-  { id: 604, number: '604', bedType: 'single', floor: 6, capacity: 1, status: ROOM_STATUS.DIRTY, lastCleaned: '2026-03-10T07:00:00', cleanedBy: 'Zeynep Arslan' },
-  { id: 605, number: '605', bedType: 'double', floor: 6, capacity: 2, status: ROOM_STATUS.OCCUPIED, guestName: 'İrem Başar', lastCleaned: '2026-03-09T09:30:00', cleanedBy: 'Zeynep Arslan' },
-  { id: 606, number: '606', bedType: 'king', floor: 6, capacity: 3, status: ROOM_STATUS.MAINTENANCE, lastCleaned: '2026-03-07T10:00:00', cleanedBy: 'Zeynep Arslan' },
-  { id: 607, number: '607', bedType: 'twin', floor: 6, capacity: 2, status: ROOM_STATUS.AVAILABLE, lastCleaned: '2026-03-11T10:30:00', cleanedBy: 'Zeynep Arslan' },
-  { id: 608, number: '608', bedType: 'double', floor: 6, capacity: 2, status: ROOM_STATUS.OCCUPIED, guestName: 'Oğuz Kara', lastCleaned: '2026-03-10T10:00:00', cleanedBy: 'Zeynep Arslan' },
-];
+/** Backend ApiRoom → RoomSellView'ın beklediği format */
+const mapApiRoomToSellRoom = (apiRoom: ApiRoom): RoomSellRoom => ({
+  id: apiRoom.id,
+  number: apiRoom.roomNumber,
+  bedType: apiRoom.bedType,
+  floor: apiRoom.floor,
+  capacity: apiRoom.capacity,
+  status: apiRoom.status,
+  guestName: apiRoom.guestName || undefined,
+  guests: apiRoom.guests.map((g) => ({
+    guestId: g.guestId,
+    guestName: g.guestName,
+    phone: g.phone,
+  })),
+  price: parseFloat(apiRoom.price) || 0,
+  reservationId: apiRoom.reservationId || undefined,
+  reservationNotes: apiRoom.reservationNotes || undefined,
+  reservationCheckIn: apiRoom.reservationCheckIn || undefined,
+  reservationCheckOut: apiRoom.reservationCheckOut || undefined,
+});
 
 interface FilterOption {
   value: string;
@@ -133,55 +106,61 @@ const getStatusIcon = (status: string): string => {
 
 const RoomStatusScreen: React.FC<RoomStatusScreenProps> = ({ onClose }) => {
   const { user } = useAuth();
-  const [rooms, setRooms] = useState<Room[]>(INITIAL_ROOMS);
-  const [filter, setFilter] = useState('all');
-  const [selectedRoom, setSelectedRoom] = useState<Room | null>(null);
 
-  const formatDate = (dateStr: string): string => {
-    const d = new Date(dateStr);
-    return `${d.getDate().toString().padStart(2, '0')}.${(d.getMonth() + 1).toString().padStart(2, '0')}.${d.getFullYear()} ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
-  };
+  /* API'den odaları çek */
+  const { data: apiRooms, loading, error, refetch } = useApi(() => roomsApi.getAll());
+
+  /* Canlı oda state'i — API + WebSocket birleşimi */
+  const [liveRooms, setLiveRooms] = useState<ApiRoom[]>([]);
+  const [filter, setFilter] = useState('all');
+  const [selectedRoom, setSelectedRoom] = useState<ApiRoom | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+
+  /* API verisi gelince liveRooms'a aktar */
+  useEffect(() => {
+    if (apiRooms) setLiveRooms(apiRooms);
+  }, [apiRooms]);
+
+  /* WebSocket: Oda güncellenince liveRooms'ta güncelle */
+  useRoomWebSocket({
+    onRoomUpdate: (updatedRoom) => {
+      setLiveRooms((prev) =>
+        prev.map((r) => r.id === updatedRoom.id ? updatedRoom : r)
+      );
+    },
+  });
 
   /** Patron, müdür veya resepsiyon mu? */
   const canManageRooms = user?.role === ROLES.PATRON || user?.role === ROLES.MANAGER || user?.role === ROLES.RECEPTION;
 
-  /** Oda güncelle (RoomSellView'dan çağrılır — check-in/check-out) */
-  const handleRoomUpdate = (roomId: number, updates: Partial<RoomSellRoom>) => {
-    setRooms((prev) =>
-      prev.map((r) =>
-        r.id === roomId ? { ...r, ...updates } as Room : r
-      )
-    );
+  /** Pull-to-refresh */
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await refetch();
+    setRefreshing(false);
+  }, [refetch]);
+
+  /** Oda güncellendikten sonra (check-in/out) — listeyi yenile */
+  const handleRoomUpdate = () => {
     setSelectedRoom(null);
+    refetch();
   };
 
-  /** Durum güncelle (hem listeden hem detaydan çağrılabilir) */
-  const handleStatusChange = (roomNumber: string, newStatus: string) => {
-    setRooms((prev) =>
-      prev.map((r) =>
-        r.number === roomNumber
-          ? {
-              ...r,
-              status: newStatus,
-              lastCleaned: newStatus === ROOM_STATUS.AVAILABLE ? new Date().toISOString() : r.lastCleaned,
-              cleanedBy: newStatus === ROOM_STATUS.AVAILABLE ? (user?.name || r.cleanedBy) : r.cleanedBy,
-            }
-          : r
-      )
-    );
-    /* Detay açıksa selectedRoom'u da güncelle */
-    setSelectedRoom((prev) =>
-      prev && prev.number === roomNumber
-        ? {
-            ...prev,
-            status: newStatus,
-            lastCleaned: newStatus === ROOM_STATUS.AVAILABLE ? new Date().toISOString() : prev.lastCleaned,
-            cleanedBy: newStatus === ROOM_STATUS.AVAILABLE ? (user?.name || prev.cleanedBy) : prev.cleanedBy,
-          }
-        : prev
-    );
+  /** Hızlı durum değiştirme (listeden temiz/kirli toggle) */
+  const handleStatusChange = async (roomNumber: string, newStatus: string) => {
+    const room = apiRooms?.find((r) => r.roomNumber === roomNumber);
+    if (!room) return;
+    try {
+      await roomsApi.updateStatus(room.id, newStatus);
+      refetch();
+    } catch (err: any) {
+      Alert.alert('Hata', err.message);
+    }
   };
 
+  /* Odaları filtrele */
+  /* liveRooms kullan — API + WebSocket birleşimi */
+  const rooms = liveRooms;
   const filteredRooms = filter === 'all'
     ? rooms
     : rooms.filter((r) => r.status === filter);
@@ -194,6 +173,38 @@ const RoomStatusScreen: React.FC<RoomStatusScreenProps> = ({ onClose }) => {
     maintenance: rooms.filter((r) => r.status === ROOM_STATUS.MAINTENANCE).length,
     blocked: rooms.filter((r) => r.status === ROOM_STATUS.BLOCKED).length,
   };
+
+  /* Yükleniyor */
+  if (loading && !apiRooms) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={onClose}>
+            <Ionicons name="close" size={28} color={colors.textPrimary} />
+          </TouchableOpacity>
+          <Text style={styles.title}>Oda Durumu</Text>
+          <View style={{ width: 28 }} />
+        </View>
+        <LoadingState message="Odalar yükleniyor..." />
+      </View>
+    );
+  }
+
+  /* Hata */
+  if (error) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={onClose}>
+            <Ionicons name="close" size={28} color={colors.textPrimary} />
+          </TouchableOpacity>
+          <Text style={styles.title}>Oda Durumu</Text>
+          <View style={{ width: 28 }} />
+        </View>
+        <EmptyState icon="cloud-offline-outline" title="Bağlantı Hatası" description={error} />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -248,10 +259,13 @@ const RoomStatusScreen: React.FC<RoomStatusScreenProps> = ({ onClose }) => {
       {/* Oda Listesi */}
       <FlatList
         data={filteredRooms}
-        keyExtractor={(item) => item.number}
+        keyExtractor={(item) => item.roomNumber}
         contentContainerStyle={styles.list}
         numColumns={2}
         columnWrapperStyle={styles.gridRow}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[colors.primary]} />
+        }
         ListEmptyComponent={<EmptyState icon="bed-outline" title="Oda bulunamadı" />}
         renderItem={({ item: room }) => {
           const isClean = room.status === ROOM_STATUS.AVAILABLE;
@@ -262,7 +276,7 @@ const RoomStatusScreen: React.FC<RoomStatusScreenProps> = ({ onClose }) => {
               {isDirty && (
                 <TouchableOpacity
                   style={[styles.quickBtn, { backgroundColor: ROOM_STATUS_COLORS[ROOM_STATUS.AVAILABLE] }]}
-                  onPress={() => handleStatusChange(room.number, ROOM_STATUS.AVAILABLE)}
+                  onPress={() => handleStatusChange(room.roomNumber, ROOM_STATUS.AVAILABLE)}
                 >
                   <Ionicons name="checkmark-circle" size={14} color="#fff" />
                   <Text style={styles.quickBtnText}>Temiz</Text>
@@ -271,7 +285,7 @@ const RoomStatusScreen: React.FC<RoomStatusScreenProps> = ({ onClose }) => {
               {isClean && (
                 <TouchableOpacity
                   style={[styles.quickBtn, { backgroundColor: ROOM_STATUS_COLORS[ROOM_STATUS.DIRTY] }]}
-                  onPress={() => handleStatusChange(room.number, ROOM_STATUS.DIRTY)}
+                  onPress={() => handleStatusChange(room.roomNumber, ROOM_STATUS.DIRTY)}
                 >
                   <Ionicons name="alert-circle" size={14} color="#fff" />
                   <Text style={styles.quickBtnText}>Kirli</Text>
@@ -286,7 +300,7 @@ const RoomStatusScreen: React.FC<RoomStatusScreenProps> = ({ onClose }) => {
               <AppCard style={styles.roomCard} onPress={() => setSelectedRoom(room)}>
                 {/* Oda No + Durum İkonu */}
                 <View style={styles.roomTop}>
-                  <Text style={styles.roomNumber}>{room.number}</Text>
+                  <Text style={styles.roomNumber}>{room.roomNumber}</Text>
                   <Ionicons
                     name={getStatusIcon(room.status) as any}
                     size={22}
@@ -312,13 +326,6 @@ const RoomStatusScreen: React.FC<RoomStatusScreenProps> = ({ onClose }) => {
                     <Text style={styles.guestName} numberOfLines={1}>{room.guestName}</Text>
                   </View>
                 )}
-
-                {/* Son Temizlik */}
-                {room.lastCleaned && (
-                  <Text style={styles.cleanInfo}>
-                    Son: {formatDate(room.lastCleaned)}
-                  </Text>
-                )}
               </AppCard>
             </View>
           );
@@ -328,13 +335,13 @@ const RoomStatusScreen: React.FC<RoomStatusScreenProps> = ({ onClose }) => {
       {/* Oda Detay Overlay — rol bazlı */}
       {selectedRoom && canManageRooms ? (
         <RoomSellView
-          room={selectedRoom as RoomSellRoom}
+          room={mapApiRoomToSellRoom(selectedRoom)}
           onClose={() => setSelectedRoom(null)}
           onRoomUpdate={handleRoomUpdate}
         />
       ) : selectedRoom ? (
         <RoomDetailView
-          room={selectedRoom}
+          room={mapApiRoomToRoom(selectedRoom)}
           onClose={() => setSelectedRoom(null)}
           onStatusChange={handleStatusChange}
         />
@@ -470,11 +477,6 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     fontWeight: '600',
     flex: 1,
-  },
-  cleanInfo: {
-    fontSize: 10,
-    color: colors.textDisabled,
-    marginTop: 6,
   },
 });
 

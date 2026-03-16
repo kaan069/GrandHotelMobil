@@ -3,18 +3,19 @@
  *
  * Kullanıcı oturum bilgisini uygulama genelinde sağlar.
  * Giriş: şube kodu + personel numarası + şifre
- *
- * Not: Şimdilik mock veri ile çalışır, backend hazır olunca API'ye geçilecek.
+ * Backend API: POST /api/staff/login/
  */
 
 import React, { createContext, useState, useCallback, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ROLES, Role } from '../utils/constants';
+import type { Role } from '../utils/constants';
+import { staffApi } from '../services/api';
 
 export interface User {
   id: number;
   name: string;
   role: Role;
+  roles: string[];
   branchCode: string;
   staffNumber: string;
   hireDate: string;
@@ -29,22 +30,7 @@ export interface AuthContextType {
   loadSession: () => Promise<void>;
 }
 
-interface MockUser extends User {
-  password: string;
-}
-
 export const AuthContext = createContext<AuthContextType | null>(null);
-
-/** Mock personel verileri (test için) */
-const MOCK_USERS: readonly MockUser[] = [
-  { id: 1, name: 'Ahmet Yılmaz', role: ROLES.PATRON, branchCode: '001', staffNumber: '1001', password: '1234', hireDate: '2019-01-10' },
-  { id: 2, name: 'Mehmet Demir', role: ROLES.MANAGER, branchCode: '001', staffNumber: '1002', password: '1234', hireDate: '2022-03-15' },
-  { id: 3, name: 'Ayşe Kaya', role: ROLES.RECEPTION, branchCode: '001', staffNumber: '1003', password: '1234', hireDate: '2023-06-01' },
-  { id: 4, name: 'Fatma Çelik', role: ROLES.WAITER, branchCode: '001', staffNumber: '1004', password: '1234', hireDate: '2024-01-10' },
-  { id: 5, name: 'Hasan Şahin', role: ROLES.CHEF, branchCode: '001', staffNumber: '1005', password: '1234', hireDate: '2021-09-20' },
-  { id: 6, name: 'Ali Öztürk', role: ROLES.TECHNICIAN, branchCode: '001', staffNumber: '1006', password: '1234', hireDate: '2023-02-14' },
-  { id: 7, name: 'Zeynep Arslan', role: ROLES.HOUSEKEEPER, branchCode: '001', staffNumber: '1007', password: '1234', hireDate: '2024-05-01' },
-];
 
 const STORAGE_KEY = 'grandhotel_mobile_user';
 
@@ -56,34 +42,24 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(false);
 
-  /**
-   * Giriş yap
-   * @param {string} branchCode - Şube kodu
-   * @param {string} staffNumber - Personel numarası
-   * @param {string} password - Şifre
-   */
-  const login = useCallback(async (branchCode: string, staffNumber: string, password: string): Promise<User> => {
+  /** Backend API ile giriş yap */
+  const login = useCallback(async (_branchCode: string, staffNumber: string, password: string): Promise<User> => {
     setLoading(true);
     try {
-      /* Mock doğrulama - backend hazır olunca API çağrısı yapılacak */
-      const found = MOCK_USERS.find(
-        (u) =>
-          u.branchCode === branchCode &&
-          u.staffNumber === staffNumber &&
-          u.password === password
-      );
+      const employee = await staffApi.login({ staffNumber, password });
 
-      if (!found) {
-        throw new Error('Şube kodu, personel numarası veya şifre hatalı');
-      }
+      const primaryRole = (employee.roles && employee.roles.length > 0
+        ? employee.roles[0]
+        : 'reception') as Role;
 
       const userData: User = {
-        id: found.id,
-        name: found.name,
-        role: found.role,
-        branchCode: found.branchCode,
-        staffNumber: found.staffNumber,
-        hireDate: found.hireDate,
+        id: employee.id,
+        name: employee.fullName,
+        role: primaryRole,
+        roles: employee.roles || [],
+        branchCode: '001',
+        staffNumber: employee.staffNumber,
+        hireDate: employee.hireDate,
       };
 
       setUser(userData);
@@ -108,29 +84,32 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     }
   }, []);
 
-  /** Kayıtlı oturumu yükle (uygulama açılışında) */
+  /** Kaydedilmiş oturumu yükle */
   const loadSession = useCallback(async (): Promise<void> => {
+    setLoading(true);
     try {
       const saved = await AsyncStorage.getItem(STORAGE_KEY);
       if (saved) {
-        setUser(JSON.parse(saved) as User);
+        setUser(JSON.parse(saved));
       }
-    } catch (e) {
-      /* Hata varsa sessizce geç */
+    } catch {
+      /* Hata durumunda oturumsuz devam et */
+    } finally {
+      setLoading(false);
     }
   }, []);
 
+  const value: AuthContextType = {
+    user,
+    loading,
+    isAuthenticated: Boolean(user),
+    login,
+    logout,
+    loadSession,
+  };
+
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        loading,
-        isAuthenticated: !!user,
-        login,
-        logout,
-        loadSession,
-      }}
-    >
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );

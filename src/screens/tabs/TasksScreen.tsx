@@ -40,6 +40,10 @@ import ReportsScreen from '../reports/ReportsScreen';
 import RoomServiceScreen from '../tasks/RoomServiceScreen';
 import RoomStatusScreen from '../tasks/RoomStatusScreen';
 import ComplaintsScreen from '../tasks/ComplaintsScreen';
+import CompanyScreen from '../tasks/CompanyScreen';
+import ReservationHistoryScreen from '../tasks/ReservationHistoryScreen';
+import MyTasksScreen from '../tasks/MyTasksScreen';
+import CreateTaskScreen from '../tasks/CreateTaskScreen';
 
 interface TaskModule {
   id: string;
@@ -55,37 +59,48 @@ interface TaskModule {
  */
 const TASK_MODULES: Record<string, TaskModule[]> = {
   [ROLES.CHEF]: [
+    { id: 'my-tasks', label: 'Görevlerim', icon: 'clipboard-outline', color: '#1565C0', screen: 'MyTasks' },
     { id: 'shopping', label: 'Alışveriş Listesi', icon: 'cart-outline', color: '#22C55E', screen: 'ShoppingList' },
     { id: 'meal', label: 'Yemek Programı', icon: 'restaurant-outline', color: '#F59E0B', screen: 'MealProgram' },
     { id: 'fault-create', label: 'Arıza Bildir', icon: 'warning-outline', color: '#EF4444', screen: 'FaultCreate' },
   ],
   [ROLES.WAITER]: [
+    { id: 'my-tasks', label: 'Görevlerim', icon: 'clipboard-outline', color: '#1565C0', screen: 'MyTasks' },
     { id: 'room-service', label: 'Oda Servisi', icon: 'cafe-outline', color: '#8B5CF6', screen: 'RoomService' },
     { id: 'shopping', label: 'Alışveriş Listesi', icon: 'cart-outline', color: '#22C55E', screen: 'ShoppingList' },
     { id: 'meal', label: 'Yemek Programı', icon: 'restaurant-outline', color: '#F59E0B', screen: 'MealProgram' },
     { id: 'fault-create', label: 'Arıza Bildir', icon: 'warning-outline', color: '#EF4444', screen: 'FaultCreate' },
   ],
   [ROLES.TECHNICIAN]: [
+    { id: 'my-tasks', label: 'Görevlerim', icon: 'clipboard-outline', color: '#1565C0', screen: 'MyTasks' },
     { id: 'fault-list', label: 'Arıza Listesi', icon: 'construct-outline', color: '#3B82F6', screen: 'FaultList' },
     { id: 'meal', label: 'Yemek Programı', icon: 'restaurant-outline', color: '#F59E0B', screen: 'MealProgram' },
     { id: 'fault-create', label: 'Arıza Bildir', icon: 'warning-outline', color: '#EF4444', screen: 'FaultCreate' },
   ],
   [ROLES.HOUSEKEEPER]: [
+    { id: 'my-tasks', label: 'Görevlerim', icon: 'clipboard-outline', color: '#1565C0', screen: 'MyTasks' },
     { id: 'room-status', label: 'Oda Durumu', icon: 'bed-outline', color: '#06B6D4', screen: 'RoomStatus' },
     { id: 'meal', label: 'Yemek Programı', icon: 'restaurant-outline', color: '#F59E0B', screen: 'MealProgram' },
     { id: 'fault-create', label: 'Arıza Bildir', icon: 'warning-outline', color: '#EF4444', screen: 'FaultCreate' },
   ],
   [ROLES.RECEPTION]: [
+    { id: 'my-tasks', label: 'Görevlerim', icon: 'clipboard-outline', color: '#1565C0', screen: 'MyTasks' },
     { id: 'room-service', label: 'Oda Servisi', icon: 'cafe-outline', color: '#8B5CF6', screen: 'RoomService' },
     { id: 'room-status', label: 'Oda Durumu', icon: 'bed-outline', color: '#06B6D4', screen: 'RoomStatus' },
+    { id: 'companies', label: 'Firma Yönetimi', icon: 'business-outline', color: '#1565C0', screen: 'Companies' },
+    { id: 'reservations', label: 'Rezervasyon Geçmişi', icon: 'time-outline', color: '#7C3AED', screen: 'ReservationHistory' },
     { id: 'meal', label: 'Yemek Programı', icon: 'restaurant-outline', color: '#F59E0B', screen: 'MealProgram' },
     { id: 'fault-create', label: 'Arıza Bildir', icon: 'warning-outline', color: '#EF4444', screen: 'FaultCreate' },
   ],
   [ROLES.MANAGER]: [
+    { id: 'my-tasks', label: 'Görevlerim', icon: 'clipboard-outline', color: '#1565C0', screen: 'MyTasks' },
+    { id: 'create-task', label: 'Görev Ata', icon: 'add-circle-outline', color: '#E91E63', screen: 'CreateTask' },
     { id: 'complaints', label: 'Şikayetler & Öneriler', icon: 'chatbubbles-outline', color: '#8B5CF6', screen: 'Complaints' },
     { id: 'fault-list', label: 'Arıza Listesi', icon: 'construct-outline', color: '#3B82F6', screen: 'FaultList' },
     { id: 'room-service', label: 'Oda Servisi', icon: 'cafe-outline', color: '#8B5CF6', screen: 'RoomService' },
     { id: 'room-status', label: 'Oda Durumu', icon: 'bed-outline', color: '#06B6D4', screen: 'RoomStatus' },
+    { id: 'companies', label: 'Firma Yönetimi', icon: 'business-outline', color: '#1565C0', screen: 'Companies' },
+    { id: 'reservations', label: 'Rezervasyon Geçmişi', icon: 'time-outline', color: '#7C3AED', screen: 'ReservationHistory' },
     { id: 'shopping', label: 'Alışveriş Listesi', icon: 'cart-outline', color: '#22C55E', screen: 'ShoppingList' },
     { id: 'meal', label: 'Yemek Programı', icon: 'restaurant-outline', color: '#F59E0B', screen: 'MealProgram' },
     { id: 'stock', label: 'Stok Yönetimi', icon: 'cube-outline', color: '#EC4899', screen: 'Stock' },
@@ -93,10 +108,14 @@ const TASK_MODULES: Record<string, TaskModule[]> = {
     { id: 'fault-create', label: 'Arıza Bildir', icon: 'warning-outline', color: '#EF4444', screen: 'FaultCreate' },
   ],
   [ROLES.PATRON]: [
+    { id: 'my-tasks', label: 'Görevlerim', icon: 'clipboard-outline', color: '#1565C0', screen: 'MyTasks' },
+    { id: 'create-task', label: 'Görev Ata', icon: 'add-circle-outline', color: '#E91E63', screen: 'CreateTask' },
     { id: 'complaints', label: 'Şikayetler & Öneriler', icon: 'chatbubbles-outline', color: '#8B5CF6', screen: 'Complaints' },
     { id: 'fault-list', label: 'Arıza Listesi', icon: 'construct-outline', color: '#3B82F6', screen: 'FaultList' },
     { id: 'room-service', label: 'Oda Servisi', icon: 'cafe-outline', color: '#8B5CF6', screen: 'RoomService' },
     { id: 'room-status', label: 'Oda Durumu', icon: 'bed-outline', color: '#06B6D4', screen: 'RoomStatus' },
+    { id: 'companies', label: 'Firma Yönetimi', icon: 'business-outline', color: '#1565C0', screen: 'Companies' },
+    { id: 'reservations', label: 'Rezervasyon Geçmişi', icon: 'time-outline', color: '#7C3AED', screen: 'ReservationHistory' },
     { id: 'shopping', label: 'Alışveriş Listesi', icon: 'cart-outline', color: '#22C55E', screen: 'ShoppingList' },
     { id: 'meal', label: 'Yemek Programı', icon: 'restaurant-outline', color: '#F59E0B', screen: 'MealProgram' },
     { id: 'stock', label: 'Stok Yönetimi', icon: 'cube-outline', color: '#EC4899', screen: 'Stock' },
@@ -118,6 +137,10 @@ const SCREEN_MAP: Record<string, React.ComponentType<{ onClose: () => void }>> =
   RoomService: RoomServiceScreen,
   RoomStatus: RoomStatusScreen,
   Complaints: ComplaintsScreen,
+  Companies: CompanyScreen,
+  ReservationHistory: ReservationHistoryScreen,
+  MyTasks: MyTasksScreen,
+  CreateTask: CreateTaskScreen,
 };
 
 const TasksScreen: React.FC = () => {

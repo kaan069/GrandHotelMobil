@@ -273,7 +273,7 @@ const RoomServiceScreen: React.FC<RoomServiceScreenProps> = ({ onClose }) => {
       />
 
       {/* Sipariş Ekleme Modalı */}
-      <Modal visible={showForm} animationType="slide" presentationStyle="pageSheet">
+      <Modal visible={showForm} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowForm(false)}>
         <View style={styles.formContainer}>
           <View style={styles.formHeader}>
             <TouchableOpacity onPress={() => setShowForm(false)}>

@@ -10,22 +10,40 @@ export const ROLES = {
   PATRON: 'patron',
   MANAGER: 'manager',
   RECEPTION: 'reception',
+  RECEPTION_MANAGER: 'reception_manager',
   WAITER: 'waiter',
   CHEF: 'chef',
-  TECHNICIAN: 'technician',
+  RESTAURANT_MANAGER: 'restaurant_manager',
   HOUSEKEEPER: 'housekeeper',
+  HOUSEKEEPING_MANAGER: 'housekeeping_manager',
+  TECHNICIAN: 'technician',
+  SECURITY: 'security',
+  ACCOUNTANT: 'accountant',
+  LOBBY: 'lobby',
+  BARISTA: 'barista',
+  BARMAN: 'barman',
+  MINIBAR: 'minibar',
 } as const;
 
 export type Role = typeof ROLES[keyof typeof ROLES];
 
 export const ROLE_LABELS: Record<string, string> = {
   [ROLES.PATRON]: 'Patron',
-  [ROLES.MANAGER]: 'Müdür',
+  [ROLES.MANAGER]: 'Genel Müdür',
   [ROLES.RECEPTION]: 'Resepsiyon',
+  [ROLES.RECEPTION_MANAGER]: 'Resepsiyon Müdürü',
   [ROLES.WAITER]: 'Garson',
   [ROLES.CHEF]: 'Aşçı',
-  [ROLES.TECHNICIAN]: 'Teknik',
+  [ROLES.RESTAURANT_MANAGER]: 'Restoran Müdürü',
   [ROLES.HOUSEKEEPER]: 'Housekeeping',
+  [ROLES.HOUSEKEEPING_MANAGER]: 'Housekeeping Müdürü',
+  [ROLES.TECHNICIAN]: 'Teknik',
+  [ROLES.SECURITY]: 'Güvenlik',
+  [ROLES.ACCOUNTANT]: 'Muhasebe',
+  [ROLES.LOBBY]: 'Lobi',
+  [ROLES.BARISTA]: 'Barista',
+  [ROLES.BARMAN]: 'Barmen',
+  [ROLES.MINIBAR]: 'Minibar Görevlisi',
 };
 
 /* ==================== ARIZA DURUMLARI ==================== */
@@ -212,4 +230,4 @@ export const PAYMENT_METHODS: readonly LabelValueOption[] = [
 /* ==================== UYGULAMA AYARLARI ==================== */
 
 export const APP_NAME = 'GrandHotel';
-export const API_BASE_URL = 'http://localhost:3001/api';
+export const API_BASE_URL = 'http://localhost:8000/api';

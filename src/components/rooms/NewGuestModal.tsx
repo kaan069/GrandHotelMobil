@@ -21,7 +21,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { AppInput, AppButton } from '../common';
 import { colors, spacing, fontSize, borderRadius } from '../../theme';
 import { Guest } from '../../utils/types';
-import { addGuestLocal } from '../../utils/mockData';
+import { guestsApi } from '../../services/api';
 
 interface NewGuestModalProps {
   visible: boolean;
@@ -36,6 +36,7 @@ const NewGuestModal: React.FC<NewGuestModalProps> = ({ visible, onClose, onSave 
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
 
   const resetForm = () => {
     setTcNo('');
@@ -46,7 +47,7 @@ const NewGuestModal: React.FC<NewGuestModalProps> = ({ visible, onClose, onSave 
     setErrors({});
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const newErrors: Record<string, string> = {};
     if (!tcNo.trim() || tcNo.trim().length !== 11) newErrors.tcNo = 'TC Kimlik 11 haneli olmalı';
     if (!firstName.trim()) newErrors.firstName = 'Ad zorunlu';
@@ -55,16 +56,22 @@ const NewGuestModal: React.FC<NewGuestModalProps> = ({ visible, onClose, onSave 
     setErrors(newErrors);
     if (Object.keys(newErrors).length > 0) return;
 
-    const guest = addGuestLocal({
-      tcNo: tcNo.trim(),
-      firstName: firstName.trim(),
-      lastName: lastName.trim(),
-      phone: phone.trim(),
-      email: email.trim() || undefined,
-    });
-
-    onSave(guest);
-    resetForm();
+    setSaving(true);
+    try {
+      const guest = await guestsApi.create({
+        tcNo: tcNo.trim(),
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        phone: phone.trim(),
+        email: email.trim() || undefined,
+      });
+      onSave(guest);
+      resetForm();
+    } catch (err: any) {
+      Alert.alert('Hata', err.message || 'Misafir oluşturulamadı');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleClose = () => {
@@ -73,12 +80,13 @@ const NewGuestModal: React.FC<NewGuestModalProps> = ({ visible, onClose, onSave 
   };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent>
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={handleClose}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.overlay}
       >
-        <View style={styles.container}>
+        <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={handleClose} />
+        <View style={styles.container} onStartShouldSetResponder={() => true}>
           {/* Header */}
           <View style={styles.header}>
             <TouchableOpacity onPress={handleClose}>
@@ -154,6 +162,7 @@ const NewGuestModal: React.FC<NewGuestModalProps> = ({ visible, onClose, onSave 
               title="Kaydet ve Odaya Ekle"
               onPress={handleSave}
               icon="checkmark-circle-outline"
+              loading={saving}
             />
 
             <AppButton

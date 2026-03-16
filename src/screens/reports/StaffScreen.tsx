@@ -1,9 +1,8 @@
 /**
  * StaffScreen - Eleman Yönetimi Ekranı
  *
- * Patron için personel bilgileri ve giriş/çıkış logları.
- * Yeni eleman ekleme, yıllık izin takibi ve mesai saatleri.
- * İzin hesaplaması işe giriş tarihine göre dinamik yapılır.
+ * Patron/müdür için personel bilgileri ve izin takibi.
+ * Veriler backend API'den çekilir.
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -15,127 +14,75 @@ import {
   TouchableOpacity,
   Modal,
   Alert,
+  ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { AppCard, StatusChip } from '../../components/common';
 import { colors, spacing, fontSize, borderRadius } from '../../theme';
-import { ROLE_LABELS, EMPLOYEES_STORAGE_KEY } from '../../utils/constants';
-import { calculateAnnualLeave, getYearsOfService } from '../../utils/leaveCalculator';
+import { ROLE_LABELS } from '../../utils/constants';
+import { getYearsOfService } from '../../utils/leaveCalculator';
+import { staffApi, leavesApi } from '../../services/api';
+import type { ApiEmployee } from '../../services/api';
+import useAuth from '../../hooks/useAuth';
 import EmployeeAddModal from './EmployeeAddModal';
-
-interface Employee {
-  id: number;
-  firstName: string;
-  lastName: string;
-  name: string;
-  role: string;
-  roles: string[];
-  staffNumber: string;
-  phone: string;
-  password: string;
-  hireDate: string;
-  checkIn: string | null;
-  checkOut: string | null;
-  status: string;
-  usedLeave: number;
-}
 
 interface StaffScreenProps {
   onClose: () => void;
 }
 
-/** Mock personel verileri (ilk yüklemede kullanılır) */
-const DEFAULT_STAFF: Employee[] = [
-  {
-    id: 1, firstName: 'Mehmet', lastName: 'Demir', name: 'Mehmet Demir',
-    role: 'manager', roles: ['manager'], staffNumber: '1002', phone: '0532 111 22 33',
-    password: '1234', hireDate: '2022-03-15',
-    checkIn: '08:00', checkOut: '17:30', status: 'active', usedLeave: 5,
-  },
-  {
-    id: 2, firstName: 'Ayşe', lastName: 'Kaya', name: 'Ayşe Kaya',
-    role: 'reception', roles: ['reception'], staffNumber: '1003', phone: '0533 222 33 44',
-    password: '1234', hireDate: '2023-06-01',
-    checkIn: '07:45', checkOut: null, status: 'active', usedLeave: 3,
-  },
-  {
-    id: 3, firstName: 'Fatma', lastName: 'Çelik', name: 'Fatma Çelik',
-    role: 'waiter', roles: ['waiter'], staffNumber: '1004', phone: '0534 333 44 55',
-    password: '1234', hireDate: '2024-01-10',
-    checkIn: null, checkOut: null, status: 'leave', usedLeave: 14,
-  },
-  {
-    id: 4, firstName: 'Hasan', lastName: 'Şahin', name: 'Hasan Şahin',
-    role: 'chef', roles: ['chef'], staffNumber: '1005', phone: '0535 444 55 66',
-    password: '1234', hireDate: '2021-09-20',
-    checkIn: '06:30', checkOut: null, status: 'active', usedLeave: 3,
-  },
-  {
-    id: 5, firstName: 'Ali', lastName: 'Öztürk', name: 'Ali Öztürk',
-    role: 'technician', roles: ['technician'], staffNumber: '1006', phone: '0536 555 66 77',
-    password: '1234', hireDate: '2023-02-14',
-    checkIn: '08:15', checkOut: '17:00', status: 'active', usedLeave: 7,
-  },
-  {
-    id: 6, firstName: 'Zeynep', lastName: 'Arslan', name: 'Zeynep Arslan',
-    role: 'housekeeper', roles: ['housekeeper'], staffNumber: '1007', phone: '0537 666 77 88',
-    password: '1234', hireDate: '2024-05-01',
-    checkIn: '07:00', checkOut: null, status: 'active', usedLeave: 2,
-  },
-];
-
 const StaffScreen: React.FC<StaffScreenProps> = ({ onClose }) => {
-  const [staff, setStaff] = useState<Employee[]>([]);
+  const [staff, setStaff] = useState<ApiEmployee[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const { user } = useAuth();
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
 
-  /** AsyncStorage'dan personel yükle */
-  const loadStaff = useCallback(async () => {
+  /** Backend'den personel listesini çek */
+  const fetchStaff = useCallback(async () => {
     try {
-      const saved = await AsyncStorage.getItem(EMPLOYEES_STORAGE_KEY);
-      if (saved) {
-        setStaff(JSON.parse(saved));
-      } else {
-        setStaff(DEFAULT_STAFF);
-        await AsyncStorage.setItem(EMPLOYEES_STORAGE_KEY, JSON.stringify(DEFAULT_STAFF));
-      }
-    } catch {
-      setStaff(DEFAULT_STAFF);
+      const data = await staffApi.getAll();
+      setStaff(data);
+    } catch (err) {
+      console.error('Personel yüklenemedi:', err);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
     }
   }, []);
 
   useEffect(() => {
-    loadStaff();
-  }, [loadStaff]);
+    fetchStaff();
+  }, [fetchStaff]);
 
-  /** AsyncStorage'a kaydet */
-  const persist = async (data: Employee[]) => {
-    setStaff(data);
-    await AsyncStorage.setItem(EMPLOYEES_STORAGE_KEY, JSON.stringify(data));
+  const handleRefresh = () => {
+    setRefreshing(true);
+    fetchStaff();
   };
 
-  /** Yeni eleman ekle */
-  const handleAddEmployee = async (employeeData: Omit<Employee, 'id' | 'staffNumber' | 'checkIn' | 'checkOut'>) => {
-    const maxId = staff.reduce((max, e) => Math.max(max, e.id), 0);
-    const maxStaffNum = staff.reduce(
-      (max, e) => Math.max(max, Number(e.staffNumber) || 0),
-      1001
-    );
-
-    const newEmployee: Employee = {
-      ...employeeData,
-      id: maxId + 1,
-      staffNumber: String(maxStaffNum + 1),
-      checkIn: null,
-      checkOut: null,
-    };
-
-    await persist([...staff, newEmployee]);
+  /** Yeni eleman ekle (API) */
+  const handleAddEmployee = async (employeeData: any) => {
+    try {
+      const maxNum = staff.reduce((max, e) => Math.max(max, Number(e.staffNumber) || 0), 1001);
+      await staffApi.create({
+        firstName: employeeData.firstName,
+        lastName: employeeData.lastName,
+        phone: employeeData.phone || '',
+        password: employeeData.password,
+        staffNumber: String(maxNum + 1),
+        hireDate: employeeData.hireDate,
+        roles: employeeData.roles || [],
+      });
+      setShowAddModal(false);
+      fetchStaff();
+    } catch (err: any) {
+      Alert.alert('Hata', 'Eleman eklenemedi');
+    }
   };
 
-  /** Eleman sil */
+  /** Eleman sil (API) */
   const handleDelete = (id: number, name: string) => {
     Alert.alert(
       'Eleman Sil',
@@ -145,11 +92,121 @@ const StaffScreen: React.FC<StaffScreenProps> = ({ onClose }) => {
         {
           text: 'Sil',
           style: 'destructive',
-          onPress: () => persist(staff.filter((s) => s.id !== id)),
+          onPress: async () => {
+            try {
+              await staffApi.delete(id);
+              setStaff((prev) => prev.filter((s) => s.id !== id));
+            } catch {
+              Alert.alert('Hata', 'Eleman silinemedi');
+            }
+          },
         },
       ]
     );
   };
+
+  /** İzin ver */
+  const handleLeave = (emp: ApiEmployee) => {
+    const leaveTypes = [
+      { text: 'Haftalık İzin', type: 'weekly' },
+      { text: 'Yıllık İzin', type: 'annual' },
+      { text: 'Günlük İzin', type: 'daily' },
+      { text: 'Ücretsiz İzin', type: 'unpaid' },
+    ];
+
+    Alert.alert(
+      `${emp.fullName} — İzin Ver`,
+      'İzin tipini seçin:',
+      [
+        ...leaveTypes.map((lt) => ({
+          text: lt.text,
+          onPress: () => {
+            const today = new Date().toISOString().split('T')[0];
+
+            /* Haftalık izin zaten kullanılmışsa uyar */
+            if (lt.type === 'weekly' && emp.hasWeeklyLeaveThisWeek) {
+              Alert.alert(
+                'Haftalık İzin Kullanılmış',
+                'Bu hafta zaten haftalık izin kullanılmış. Yıllık izinden düşülsün mü?',
+                [
+                  { text: 'İptal', style: 'cancel' },
+                  {
+                    text: 'Evet, Yıllıktan Düş',
+                    onPress: async () => {
+                      try {
+                        await leavesApi.create({
+                          employeeId: emp.id,
+                          leaveType: 'weekly',
+                          startDate: today,
+                          endDate: today,
+                          deductFromAnnual: true,
+                          note: 'Haftalık izin (yıllıktan düşüldü)',
+                          approvedById: user?.id,
+                        });
+                        Alert.alert('Başarılı', 'İzin verildi');
+                        fetchStaff();
+                      } catch {
+                        Alert.alert('Hata', 'İzin verilemedi');
+                      }
+                    },
+                  },
+                ]
+              );
+              return;
+            }
+
+            /* Normal izin ver */
+            Alert.alert(
+              lt.text,
+              'Bugün için izin verilsin mi?',
+              [
+                { text: 'İptal', style: 'cancel' },
+                {
+                  text: 'Onayla',
+                  onPress: async () => {
+                    try {
+                      await leavesApi.create({
+                        employeeId: emp.id,
+                        leaveType: lt.type,
+                        startDate: today,
+                        endDate: today,
+                        deductFromAnnual: lt.type === 'annual' || lt.type === 'daily',
+                        note: lt.text,
+                        approvedById: user?.id,
+                      });
+                      Alert.alert('Başarılı', `${emp.fullName} izinli olarak işaretlendi`);
+                      fetchStaff();
+                    } catch {
+                      Alert.alert('Hata', 'İzin verilemedi');
+                    }
+                  },
+                },
+              ]
+            );
+          },
+        })),
+        { text: 'İptal', style: 'cancel' },
+      ]
+    );
+  };
+
+  if (loading) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={onClose}>
+            <Ionicons name="close" size={28} color={colors.textPrimary} />
+          </TouchableOpacity>
+          <Text style={styles.title}>Eleman Yönetimi</Text>
+          <View style={{ width: 28 }} />
+        </View>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={{ marginTop: 8, color: colors.textSecondary }}>Yükleniyor...</Text>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -174,7 +231,7 @@ const StaffScreen: React.FC<StaffScreenProps> = ({ onClose }) => {
         </View>
         <View style={[styles.summaryCard, { backgroundColor: colors.warning + '15' }]}>
           <Text style={[styles.summaryValue, { color: colors.warning }]}>
-            {staff.filter((s) => s.status === 'leave').length}
+            {staff.filter((s) => s.isOnLeaveToday).length}
           </Text>
           <Text style={styles.summaryLabel}>İzinli</Text>
         </View>
@@ -191,12 +248,13 @@ const StaffScreen: React.FC<StaffScreenProps> = ({ onClose }) => {
         data={staff}
         keyExtractor={(item) => String(item.id)}
         contentContainerStyle={styles.list}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
         renderItem={({ item }) => {
           const isExpanded = expandedId === item.id;
-          const annualEntitlement = calculateAnnualLeave(item.hireDate);
-          const usedLeave = item.usedLeave || 0;
-          const remainingLeave = Math.max(0, annualEntitlement - usedLeave);
           const yearsOfService = getYearsOfService(item.hireDate);
+          const usedLeave = item.usedAnnualLeave || 0;
+          const entitlement = item.annualLeaveEntitlement || 0;
+          const remaining = item.remainingAnnualLeave || 0;
 
           return (
             <TouchableOpacity activeOpacity={0.7} onPress={() => setExpandedId(isExpanded ? null : item.id)}>
@@ -205,18 +263,18 @@ const StaffScreen: React.FC<StaffScreenProps> = ({ onClose }) => {
                 <View style={styles.staffTop}>
                   <View style={styles.staffAvatar}>
                     <Text style={styles.avatarText}>
-                      {(item.name || `${item.firstName} ${item.lastName}`).split(' ').map((n) => n[0]).join('')}
+                      {item.fullName.split(' ').map((n) => n[0]).join('')}
                     </Text>
                   </View>
                   <View style={styles.staffInfo}>
-                    <Text style={styles.staffName}>{item.name || `${item.firstName} ${item.lastName}`}</Text>
+                    <Text style={styles.staffName}>{item.fullName}</Text>
                     <Text style={styles.staffRole}>
-                      {(item.roles || [item.role]).map((r) => ROLE_LABELS[r]).join(', ')} · #{item.staffNumber}
+                      {(item.roleLabels || []).join(', ')} · #{item.staffNumber}
                     </Text>
                   </View>
                   <StatusChip
-                    label={item.status === 'active' ? 'Aktif' : 'İzinli'}
-                    color={item.status === 'active' ? colors.success : colors.warning}
+                    label={item.isOnLeaveToday ? 'İzinli' : 'Aktif'}
+                    color={item.isOnLeaveToday ? colors.warning : colors.success}
                   />
                 </View>
 
@@ -231,66 +289,59 @@ const StaffScreen: React.FC<StaffScreenProps> = ({ onClose }) => {
                       {Math.floor(yearsOfService)} yıl {Math.round((yearsOfService % 1) * 12)} ay
                     </Text>
 
-                    {/* Giriş/Çıkış */}
-                    <Text style={styles.detailTitle}>Bugünkü Mesai</Text>
-                    <View style={styles.detailRow}>
-                      <View style={styles.detailItem}>
-                        <Ionicons name="log-in-outline" size={16} color={colors.success} />
-                        <Text style={styles.detailText}>
-                          Giriş: {item.checkIn || '---'}
-                        </Text>
-                      </View>
-                      <View style={styles.detailItem}>
-                        <Ionicons name="log-out-outline" size={16} color={colors.error} />
-                        <Text style={styles.detailText}>
-                          Çıkış: {item.checkOut || '---'}
-                        </Text>
-                      </View>
-                    </View>
-
                     {/* Telefon */}
-                    {item.phone && (
+                    {item.phone ? (
                       <>
                         <Text style={styles.detailTitle}>Telefon</Text>
                         <Text style={styles.detailText}>{item.phone}</Text>
                       </>
-                    )}
+                    ) : null}
+
+                    {/* Şifre */}
+                    <Text style={styles.detailTitle}>Şifre</Text>
+                    <Text style={styles.detailText}>{item.password}</Text>
 
                     {/* Yıllık İzin */}
                     <Text style={styles.detailTitle}>Yıllık İzin</Text>
-                    {annualEntitlement > 0 ? (
+                    {entitlement > 0 ? (
                       <>
                         <View style={styles.leaveBar}>
                           <View
                             style={[
                               styles.leaveBarFill,
                               {
-                                width: `${(usedLeave / annualEntitlement) * 100}%`,
-                                backgroundColor: remainingLeave <= 2 ? colors.error : colors.primary,
+                                width: `${Math.min((usedLeave / entitlement) * 100, 100)}%`,
+                                backgroundColor: remaining <= 2 ? colors.error : colors.primary,
                               },
                             ]}
                           />
                         </View>
                         <Text style={styles.leaveText}>
-                          {usedLeave} kullanıldı / {remainingLeave} kalan / {annualEntitlement} toplam
+                          {usedLeave} kullanıldı / {remaining} kalan / {entitlement} toplam
                         </Text>
                       </>
                     ) : (
                       <Text style={styles.detailText}>Henüz 1 yılını doldurmadı</Text>
                     )}
 
-                    {/* Haftalık İzin */}
-                    <Text style={styles.detailTitle}>Haftalık İzin</Text>
-                    <Text style={styles.detailText}>Haftada 1 gün</Text>
+                    {/* Butonlar */}
+                    <View style={styles.actionRow}>
+                      <TouchableOpacity
+                        style={styles.leaveBtn}
+                        onPress={() => handleLeave(item)}
+                      >
+                        <Ionicons name="calendar-outline" size={16} color="#fff" />
+                        <Text style={styles.leaveBtnText}>İzin Ver</Text>
+                      </TouchableOpacity>
 
-                    {/* Sil butonu */}
-                    <TouchableOpacity
-                      style={styles.deleteBtn}
-                      onPress={() => handleDelete(item.id, item.name || `${item.firstName} ${item.lastName}`)}
-                    >
-                      <Ionicons name="trash-outline" size={16} color={colors.error} />
-                      <Text style={styles.deleteText}>Elemanı Sil</Text>
-                    </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.deleteBtn}
+                        onPress={() => handleDelete(item.id, item.fullName)}
+                      >
+                        <Ionicons name="trash-outline" size={16} color={colors.error} />
+                        <Text style={styles.deleteText}>Sil</Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
                 )}
               </AppCard>
@@ -300,7 +351,7 @@ const StaffScreen: React.FC<StaffScreenProps> = ({ onClose }) => {
       />
 
       {/* Eleman Ekleme Modalı */}
-      <Modal visible={showAddModal} animationType="slide">
+      <Modal visible={showAddModal} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowAddModal(false)}>
         <EmployeeAddModal
           onClose={() => setShowAddModal(false)}
           onSave={handleAddEmployee}
@@ -311,139 +362,53 @@ const StaffScreen: React.FC<StaffScreenProps> = ({ onClose }) => {
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
+  container: { flex: 1, backgroundColor: colors.background },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: spacing.md,
-    paddingTop: 56,
-    paddingBottom: spacing.md,
-    backgroundColor: colors.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingHorizontal: spacing.md, paddingTop: 56, paddingBottom: spacing.md,
+    backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border,
   },
-  title: {
-    fontSize: fontSize.lg,
-    fontWeight: '700',
-    color: colors.textPrimary,
-  },
+  title: { fontSize: fontSize.lg, fontWeight: '700', color: colors.textPrimary },
   summaryRow: {
-    flexDirection: 'row',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    gap: 10,
+    flexDirection: 'row', paddingHorizontal: spacing.md, paddingVertical: spacing.sm, gap: spacing.sm,
   },
   summaryCard: {
-    flex: 1,
-    borderRadius: borderRadius.md,
-    padding: spacing.sm,
-    alignItems: 'center',
+    flex: 1, paddingVertical: spacing.sm, borderRadius: borderRadius.md, alignItems: 'center',
   },
-  summaryValue: {
-    fontSize: fontSize.xxl,
-    fontWeight: '700',
-  },
-  summaryLabel: {
-    fontSize: fontSize.xs,
-    color: colors.textSecondary,
-    fontWeight: '500',
-  },
-  list: {
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.xxl,
-  },
-  staffCard: {
-    marginBottom: spacing.sm,
-  },
-  staffTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
+  summaryValue: { fontSize: fontSize.xl, fontWeight: '800' },
+  summaryLabel: { fontSize: fontSize.xs, color: colors.textSecondary, marginTop: 2 },
+  list: { padding: spacing.md, paddingBottom: spacing.xxl },
+  staffCard: { marginBottom: spacing.sm },
+  staffTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   staffAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.primary + '20',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
+    width: 44, height: 44, borderRadius: 22, backgroundColor: colors.primary + '20',
+    justifyContent: 'center', alignItems: 'center',
   },
-  avatarText: {
-    fontSize: fontSize.sm,
-    fontWeight: '700',
-    color: colors.primary,
+  avatarText: { fontSize: fontSize.md, fontWeight: '700', color: colors.primary },
+  staffInfo: { flex: 1 },
+  staffName: { fontSize: fontSize.md, fontWeight: '600', color: colors.textPrimary },
+  staffRole: { fontSize: fontSize.xs, color: colors.textSecondary, marginTop: 2 },
+  staffDetail: { marginTop: spacing.sm },
+  divider: { height: 1, backgroundColor: colors.border, marginBottom: spacing.sm },
+  detailTitle: { fontSize: fontSize.xs, fontWeight: '600', color: colors.textSecondary, marginTop: spacing.sm, marginBottom: 2 },
+  detailText: { fontSize: fontSize.sm, color: colors.textPrimary },
+  leaveBar: { height: 6, backgroundColor: colors.border, borderRadius: 3, marginTop: 4, overflow: 'hidden' },
+  leaveBarFill: { height: '100%', borderRadius: 3 },
+  leaveText: { fontSize: fontSize.xs, color: colors.textSecondary, marginTop: 4 },
+  actionRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: spacing.md,
   },
-  staffInfo: {
-    flex: 1,
+  leaveBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: colors.success, paddingHorizontal: 14, paddingVertical: 8,
+    borderRadius: borderRadius.md,
   },
-  staffName: {
-    fontSize: fontSize.md,
-    fontWeight: '600',
-    color: colors.textPrimary,
-  },
-  staffRole: {
-    fontSize: fontSize.sm,
-    color: colors.textSecondary,
-  },
-  staffDetail: {
-    marginTop: spacing.sm,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: colors.divider,
-    marginBottom: spacing.sm,
-  },
-  detailTitle: {
-    fontSize: fontSize.sm,
-    fontWeight: '600',
-    color: colors.textPrimary,
-    marginBottom: 6,
-    marginTop: spacing.sm,
-  },
-  detailRow: {
-    flexDirection: 'row',
-    gap: 20,
-  },
-  detailItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  detailText: {
-    fontSize: fontSize.sm,
-    color: colors.textSecondary,
-  },
-  leaveBar: {
-    height: 8,
-    backgroundColor: colors.divider,
-    borderRadius: 4,
-    overflow: 'hidden',
-    marginBottom: 4,
-  },
-  leaveBarFill: {
-    height: '100%',
-    borderRadius: 4,
-  },
-  leaveText: {
-    fontSize: fontSize.xs,
-    color: colors.textSecondary,
-  },
+  leaveBtnText: { fontSize: fontSize.sm, color: '#fff', fontWeight: '600' },
   deleteBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: spacing.md,
-    paddingVertical: 8,
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingVertical: spacing.xs,
   },
-  deleteText: {
-    fontSize: fontSize.sm,
-    fontWeight: '600',
-    color: colors.error,
-  },
+  deleteText: { fontSize: fontSize.sm, color: colors.error, fontWeight: '500' },
 });
 
 export default StaffScreen;

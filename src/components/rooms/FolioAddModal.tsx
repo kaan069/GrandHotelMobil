@@ -72,9 +72,9 @@ const FolioAddModal: React.FC<FolioAddModalProps> = ({ visible, onClose, onSave 
   };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent>
-      <View style={styles.overlay}>
-        <View style={styles.container}>
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={handleClose}>
+      <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={handleClose}>
+        <View style={styles.container} onStartShouldSetResponder={() => true}>
           {/* Header */}
           <View style={styles.header}>
             <TouchableOpacity onPress={handleClose}>
@@ -187,7 +187,7 @@ const FolioAddModal: React.FC<FolioAddModalProps> = ({ visible, onClose, onSave 
             />
           </ScrollView>
         </View>
-      </View>
+      </TouchableOpacity>
     </Modal>
   );
 };

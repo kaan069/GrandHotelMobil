@@ -176,7 +176,7 @@ const StockScreen: React.FC<StockScreenProps> = ({ onClose }) => {
       />
 
       {/* Ürün ekleme/düzenleme modal */}
-      <Modal visible={showForm} animationType="slide" presentationStyle="pageSheet">
+      <Modal visible={showForm} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowForm(false)}>
         <View style={styles.formContainer}>
           <View style={styles.formHeader}>
             <TouchableOpacity onPress={() => setShowForm(false)}>

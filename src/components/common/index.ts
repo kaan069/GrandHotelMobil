@@ -8,6 +8,7 @@ export { default as AppCard } from './AppCard';
 export { default as AppHeader } from './AppHeader';
 export { default as StatusChip } from './StatusChip';
 export { default as EmptyState } from './EmptyState';
+export { default as LoadingState } from './LoadingState';
 
 export type { AppButtonProps } from './AppButton';
 export type { AppInputProps } from './AppInput';

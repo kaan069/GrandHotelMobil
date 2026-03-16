@@ -6,7 +6,7 @@
  * Mesailerim butonu ile QR okutarak kaydedilen mesai geçmişi görüntülenir.
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -23,6 +23,7 @@ import useAuth from '../../hooks/useAuth';
 import { colors, spacing, fontSize, borderRadius } from '../../theme';
 import { ROLE_LABELS, APP_NAME } from '../../utils/constants';
 import { calculateAnnualLeave, getYearsOfService } from '../../utils/leaveCalculator';
+import { staffApi } from '../../services/api';
 import ShiftsScreen from '../tasks/ShiftsScreen';
 
 interface InfoRowProps {
@@ -33,6 +34,7 @@ interface InfoRowProps {
 
 interface LeaveCardProps {
   hireDate: string;
+  leaveInfo?: { used: number; remaining: number; entitlement: number } | null;
 }
 
 interface MenuItemProps {
@@ -44,6 +46,23 @@ interface MenuItemProps {
 const ProfileScreen: React.FC = () => {
   const { user, logout } = useAuth();
   const [showShifts, setShowShifts] = useState(false);
+  const [isOnLeave, setIsOnLeave] = useState(false);
+  const [leaveInfo, setLeaveInfo] = useState<{ used: number; remaining: number; entitlement: number } | null>(null);
+
+  /* Backend'den izin bilgisi çek */
+  useEffect(() => {
+    if (!user) return;
+    staffApi.getById(user.id)
+      .then((emp) => {
+        setIsOnLeave(emp.isOnLeaveToday);
+        setLeaveInfo({
+          used: emp.usedAnnualLeave,
+          remaining: emp.remainingAnnualLeave,
+          entitlement: emp.annualLeaveEntitlement,
+        });
+      })
+      .catch(() => {});
+  }, [user]);
 
   /** Çıkış onayı */
   const handleLogout = () => {
@@ -102,8 +121,16 @@ const ProfileScreen: React.FC = () => {
           <Ionicons name="chevron-forward" size={20} color={colors.textDisabled} />
         </TouchableOpacity>
 
+        {/* Bugün izinli banner */}
+        {isOnLeave && (
+          <View style={styles.leaveBanner}>
+            <Ionicons name="checkmark-circle" size={24} color="#fff" />
+            <Text style={styles.leaveBannerText}>Bugün İzinlisiniz</Text>
+          </View>
+        )}
+
         {/* İzinlerim */}
-        <LeaveCard hireDate={user.hireDate} />
+        <LeaveCard hireDate={user.hireDate} leaveInfo={leaveInfo} />
 
         {/* Menü öğeleri */}
         <AppCard style={styles.menuCard}>
@@ -152,11 +179,11 @@ const InfoRow: React.FC<InfoRowProps> = ({ icon, label, value }) => (
 );
 
 /** İzin bilgi kartı bileşeni */
-const LeaveCard: React.FC<LeaveCardProps> = ({ hireDate }) => {
-  const annualEntitlement = calculateAnnualLeave(hireDate);
+const LeaveCard: React.FC<LeaveCardProps> = ({ hireDate, leaveInfo }) => {
+  const annualEntitlement = leaveInfo?.entitlement ?? calculateAnnualLeave(hireDate);
   const yearsOfService = getYearsOfService(hireDate);
-  const usedLeave = 0; // Backend'den gelecek
-  const remainingLeave = Math.max(0, annualEntitlement - usedLeave);
+  const usedLeave = leaveInfo?.used ?? 0;
+  const remainingLeave = leaveInfo?.remaining ?? Math.max(0, annualEntitlement - usedLeave);
 
   return (
     <AppCard style={styles.leaveCard}>
@@ -231,6 +258,22 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
+  },
+  leaveBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#4CAF50',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    marginBottom: 12,
+  },
+  leaveBannerText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
   },
   content: {
     paddingHorizontal: spacing.md,

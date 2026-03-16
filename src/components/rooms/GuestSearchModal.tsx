@@ -21,7 +21,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { AppInput, AppButton } from '../common';
 import { colors, spacing, fontSize, borderRadius } from '../../theme';
 import { Guest } from '../../utils/types';
-import { searchGuests } from '../../utils/mockData';
+import { guestsApi } from '../../services/api';
 
 interface GuestSearchModalProps {
   visible: boolean;
@@ -38,17 +38,31 @@ const GuestSearchModal: React.FC<GuestSearchModalProps> = ({
 }) => {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<Guest[]>([]);
+  const [searchTimer, setSearchTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
 
+  /* Modal açıldığında tüm misafirleri yükle */
   useEffect(() => {
     if (visible) {
-      setResults(searchGuests(''));
       setQuery('');
+      guestsApi.getAll().then(setResults).catch(() => setResults([]));
     }
   }, [visible]);
 
+  /* Debounced arama — 300ms bekle, sonra API'ye sor */
   const handleSearch = (text: string) => {
     setQuery(text);
-    setResults(searchGuests(text));
+    if (searchTimer) clearTimeout(searchTimer);
+    const timer = setTimeout(async () => {
+      try {
+        const data = text.trim()
+          ? await guestsApi.search(text)
+          : await guestsApi.getAll();
+        setResults(data);
+      } catch {
+        setResults([]);
+      }
+    }, 300);
+    setSearchTimer(timer);
   };
 
   const handleSelectGuest = (guest: Guest) => {
@@ -105,9 +119,9 @@ const GuestSearchModal: React.FC<GuestSearchModalProps> = ({
   };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent>
-      <View style={styles.overlay}>
-        <View style={styles.container}>
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={onClose}>
+        <View style={styles.container} onStartShouldSetResponder={() => true}>
           {/* Header */}
           <View style={styles.header}>
             <TouchableOpacity onPress={onClose}>
@@ -142,7 +156,7 @@ const GuestSearchModal: React.FC<GuestSearchModalProps> = ({
             }
           />
         </View>
-      </View>
+      </TouchableOpacity>
     </Modal>
   );
 };
