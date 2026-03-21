@@ -89,23 +89,18 @@ export const FAULT_CATEGORIES: readonly LabelValueOption[] = [
 /* ==================== STOK BİRİMLERİ ==================== */
 
 export const STOCK_UNITS: readonly LabelValueOption[] = [
+  { value: 'adet', label: 'Adet' },
   { value: 'kg', label: 'Kilogram' },
   { value: 'lt', label: 'Litre' },
-  { value: 'adet', label: 'Adet' },
   { value: 'paket', label: 'Paket' },
-  { value: 'kutu', label: 'Kutu' },
-  { value: 'koli', label: 'Koli' },
 ];
 
 /* ==================== STOK KATEGORİLERİ ==================== */
 
 export const STOCK_CATEGORIES: readonly LabelValueOption[] = [
-  { value: 'food', label: 'Gıda' },
-  { value: 'drink', label: 'İçecek' },
-  { value: 'minibar', label: 'Minibar' },
   { value: 'cleaning', label: 'Temizlik' },
-  { value: 'office', label: 'Ofis Malzemesi' },
-  { value: 'maintenance', label: 'Bakım/Onarım' },
+  { value: 'kitchen', label: 'Mutfak' },
+  { value: 'office', label: 'Ofis' },
   { value: 'other', label: 'Diğer' },
 ];
 

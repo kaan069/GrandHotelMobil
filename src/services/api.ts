@@ -22,6 +22,7 @@ import type {
   Reservation,
   ReservationDetail,
   ApiFolioItem,
+  StockItem,
   MinibarProduct,
   RoomMinibarItem,
 } from '../utils/types';
@@ -63,6 +64,15 @@ async function apiClient<T>(endpoint: string, options?: RequestInit): Promise<T>
   // Hata durumunda backend'in döndüğü error mesajını al
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
+
+    // Django REST Framework field-level errors: { "field": ["msg"] }
+    if (!errorData.error && typeof errorData === 'object') {
+      const fieldErrors = Object.entries(errorData)
+        .map(([key, val]) => `${key}: ${Array.isArray(val) ? val.join(', ') : val}`)
+        .join('\n');
+      if (fieldErrors) throw new Error(fieldErrors);
+    }
+
     throw new Error(errorData.error || `API Hatası: ${response.status}`);
   }
 
@@ -504,6 +514,47 @@ async function apiMultipart<T>(endpoint: string, formData: FormData, method = 'P
 
   return response.json();
 }
+
+/* ==================== STOCK (STOK) API ==================== */
+
+export const stockApi = {
+  /** Tüm stok ürünlerini getir (filtrelenebilir) */
+  getAll: (filters?: { category?: string; isMinibar?: string }) => {
+    const params = new URLSearchParams();
+    if (filters?.category) params.append('category', filters.category);
+    if (filters?.isMinibar) params.append('isMinibar', filters.isMinibar);
+    const qs = params.toString();
+    return apiClient<StockItem[]>(`/stock/${qs ? '?' + qs : ''}`);
+  },
+
+  /** Tekil stok ürünü */
+  getById: (id: number) =>
+    apiClient<StockItem>(`/stock/${id}/`),
+
+  /** Yeni stok ürünü oluştur */
+  create: (data: {
+    name: string; category: string; unit?: string;
+    quantity?: number; isMinibar?: boolean; minibarPrice?: number;
+  }) =>
+    apiClient<StockItem>('/stock/', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  /** Stok ürünü güncelle */
+  update: (id: number, data: {
+    name?: string; category?: string; unit?: string;
+    quantity?: number; isMinibar?: boolean; minibarPrice?: number;
+  }) =>
+    apiClient<StockItem>(`/stock/${id}/`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  /** Stok ürünü sil */
+  delete: (id: number) =>
+    apiClient<void>(`/stock/${id}/`, { method: 'DELETE' }),
+};
 
 /* ==================== FAULTS (ARIZA) API ==================== */
 

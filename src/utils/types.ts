@@ -121,9 +121,23 @@ export interface ApiFolioItem {
   createdBy?: string | null;
 }
 
+/* ==================== STOK ==================== */
+
+/** Backend GET /api/stock/ response'undaki tek stok ürünü */
+export interface StockItem {
+  id: number;
+  name: string;
+  category: string;
+  unit: string;
+  quantity: number;
+  isMinibar: boolean;
+  minibarPrice: string | null;
+  createdAt: string;
+}
+
 /* ==================== MİNİBAR ==================== */
 
-/** Minibar ürünü (stok category='minibar' olan ürünler) */
+/** Minibar ürünü (isMinibar=true olan stok ürünleri + takip bilgisi) */
 export interface MinibarProduct {
   id: number;
   name: string;
