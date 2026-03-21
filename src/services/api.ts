@@ -306,6 +306,12 @@ export const kazancApi = {
     return apiClient<any>(`/kazanc/revenue-breakdown/${qs ? '?' + qs : ''}`);
   },
 
+  /** Günlük özet (doluluk + folio breakdown + dolu oda detayları) */
+  dailySummary: (date?: string) => {
+    const qs = date ? `?date=${date}` : '';
+    return apiClient<any>(`/kazanc/daily-summary/${qs}`);
+  },
+
   /** Gün sonu önizleme — hangi odalara ücret yansıyacak */
   nightAuditPreview: () =>
     apiClient<any>('/kazanc/night-audit-preview/'),

@@ -17,15 +17,21 @@ import { Ionicons } from '@expo/vector-icons';
 import TasksScreen from '../screens/tabs/TasksScreen';
 import QRScreen from '../screens/tabs/QRScreen';
 import ProfileScreen from '../screens/tabs/ProfileScreen';
+import ReportsScreen from '../screens/reports/ReportsScreen';
+import useAuth from '../hooks/useAuth';
+import { ROLES } from '../utils/constants';
 import { colors } from '../theme';
 
 type MainTabsParamList = {
   Tasks: undefined;
+  Reports: undefined;
   QR: undefined;
   Profile: undefined;
 };
 
 const Tab = createBottomTabNavigator<MainTabsParamList>();
+
+const REPORT_ROLES = [ROLES.PATRON, ROLES.MANAGER, ROLES.RECEPTION_MANAGER];
 
 interface QRButtonProps {
   onPress?: (...args: any[]) => void;
@@ -45,6 +51,9 @@ const QRButton: React.FC<QRButtonProps> = ({ onPress }) => (
 );
 
 const MainTabs: React.FC = () => {
+  const { user } = useAuth();
+  const canViewReports = user?.roles?.some((r) => REPORT_ROLES.includes(r as any)) ?? false;
+
   return (
     <Tab.Navigator
       screenOptions={{
@@ -66,6 +75,20 @@ const MainTabs: React.FC = () => {
           ),
         }}
       />
+
+      {/* Raporlar sekmesi - sadece patron/müdür */}
+      {canViewReports && (
+        <Tab.Screen
+          name="Reports"
+          component={ReportsScreen}
+          options={{
+            tabBarLabel: 'Raporlar',
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="bar-chart" size={size} color={color} />
+            ),
+          }}
+        />
+      )}
 
       {/* QR Kod sekmesi - özel buton */}
       <Tab.Screen
