@@ -231,6 +231,10 @@ export const reservationsApi = {
   /** Rezervasyon iptal */
   cancel: (id: number) =>
     apiClient<Reservation>(`/reservations/${id}/cancel/`, { method: 'POST' }),
+
+  /** Rezerve → Check-in dönüşümü */
+  checkIn: (id: number) =>
+    apiClient<Reservation>(`/reservations/${id}/check_in/`, { method: 'POST' }),
 };
 
 /* ==================== FOLIOS API ==================== */

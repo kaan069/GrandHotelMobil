@@ -38,6 +38,9 @@ export interface ApiRoom {
   reservationNotes: string | null;
   reservationCheckIn: string | null;
   reservationCheckOut: string | null;
+  reservationStaffName: string | null;
+  reservationStatus: string | null;
+  reservationOwnerName: string | null;
   notes: string | null;
 }
 

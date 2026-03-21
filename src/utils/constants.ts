@@ -135,6 +135,7 @@ export const ROOM_STATUS_LABELS: Record<string, string> = {
   [ROOM_STATUS.DIRTY]: 'Kirli',
   [ROOM_STATUS.MAINTENANCE]: 'Bakımda',
   [ROOM_STATUS.BLOCKED]: 'Bloke',
+  reserved: 'Rezerve',
 };
 
 export const ROOM_STATUS_COLORS: Record<string, string> = {
@@ -143,6 +144,7 @@ export const ROOM_STATUS_COLORS: Record<string, string> = {
   [ROOM_STATUS.DIRTY]: '#F97316',
   [ROOM_STATUS.MAINTENANCE]: '#3B82F6',
   [ROOM_STATUS.BLOCKED]: '#64748B',
+  reserved: '#1565C0',
 };
 
 /* ==================== ODA SERVİSİ ==================== */

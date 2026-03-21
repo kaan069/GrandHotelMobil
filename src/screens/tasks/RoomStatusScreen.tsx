@@ -75,6 +75,8 @@ const mapApiRoomToSellRoom = (apiRoom: ApiRoom): RoomSellRoom => ({
   price: parseFloat(apiRoom.price) || 0,
   reservationId: apiRoom.reservationId || undefined,
   reservationNotes: apiRoom.reservationNotes || undefined,
+  reservationStatus: apiRoom.reservationStatus,
+  reservationOwnerName: apiRoom.reservationOwnerName,
   reservationCheckIn: apiRoom.reservationCheckIn || undefined,
   reservationCheckOut: apiRoom.reservationCheckOut || undefined,
 });
@@ -268,8 +270,11 @@ const RoomStatusScreen: React.FC<RoomStatusScreenProps> = ({ onClose }) => {
         }
         ListEmptyComponent={<EmptyState icon="bed-outline" title="Oda bulunamadı" />}
         renderItem={({ item: room }) => {
-          const isClean = room.status === ROOM_STATUS.AVAILABLE;
+          const isReserved = room.status === ROOM_STATUS.AVAILABLE && room.reservationStatus === 'reserved';
+          const isClean = room.status === ROOM_STATUS.AVAILABLE && !isReserved;
           const isDirty = room.status === ROOM_STATUS.DIRTY;
+          const displayColor = isReserved ? ROOM_STATUS_COLORS['reserved'] : ROOM_STATUS_COLORS[room.status];
+          const displayLabel = isReserved ? ROOM_STATUS_LABELS['reserved'] : ROOM_STATUS_LABELS[room.status];
           return (
             <View style={styles.roomWrapper}>
               {/* Hızlı Temiz / Kirli Butonu */}
@@ -291,7 +296,13 @@ const RoomStatusScreen: React.FC<RoomStatusScreenProps> = ({ onClose }) => {
                   <Text style={styles.quickBtnText}>Kirli</Text>
                 </TouchableOpacity>
               )}
-              {!isDirty && !isClean && (
+              {isReserved && (
+                <View style={[styles.quickBtn, { backgroundColor: ROOM_STATUS_COLORS['reserved'] }]}>
+                  <Ionicons name="calendar" size={14} color="#fff" />
+                  <Text style={styles.quickBtnText}>Rezerve</Text>
+                </View>
+              )}
+              {!isDirty && !isClean && !isReserved && (
                 <View style={[styles.quickBtn, { backgroundColor: colors.textDisabled }]}>
                   <Text style={styles.quickBtnText}>{ROOM_STATUS_LABELS[room.status]}</Text>
                 </View>
@@ -302,9 +313,9 @@ const RoomStatusScreen: React.FC<RoomStatusScreenProps> = ({ onClose }) => {
                 <View style={styles.roomTop}>
                   <Text style={styles.roomNumber}>{room.roomNumber}</Text>
                   <Ionicons
-                    name={getStatusIcon(room.status) as any}
+                    name={isReserved ? 'calendar' as any : getStatusIcon(room.status) as any}
                     size={22}
-                    color={ROOM_STATUS_COLORS[room.status]}
+                    color={displayColor}
                   />
                 </View>
 
@@ -315,15 +326,25 @@ const RoomStatusScreen: React.FC<RoomStatusScreenProps> = ({ onClose }) => {
 
                 {/* Durum Chip */}
                 <StatusChip
-                  label={ROOM_STATUS_LABELS[room.status]}
-                  color={ROOM_STATUS_COLORS[room.status]}
+                  label={displayLabel}
+                  color={displayColor}
                 />
 
-                {/* Misafir Adı */}
+                {/* Misafir Adı (dolu ise) */}
                 {room.status === ROOM_STATUS.OCCUPIED && room.guestName && (
                   <View style={styles.guestRow}>
                     <Ionicons name="person" size={12} color={colors.textSecondary} />
                     <Text style={styles.guestName} numberOfLines={1}>{room.guestName}</Text>
+                  </View>
+                )}
+
+                {/* Rezervasyon sahibi adı (rezerve ise) */}
+                {isReserved && room.reservationOwnerName && (
+                  <View style={styles.guestRow}>
+                    <Ionicons name="person-outline" size={12} color={ROOM_STATUS_COLORS['reserved']} />
+                    <Text style={[styles.guestName, { color: ROOM_STATUS_COLORS['reserved'] }]} numberOfLines={1}>
+                      {room.reservationOwnerName}
+                    </Text>
                   </View>
                 )}
               </AppCard>

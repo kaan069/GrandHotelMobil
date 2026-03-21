@@ -32,7 +32,7 @@ import {
   FOLIO_CATEGORY_LABELS,
 } from '../../utils/constants';
 import useAuth from '../../hooks/useAuth';
-import { roomsApi, foliosApi } from '../../services/api';
+import { roomsApi, foliosApi, reservationsApi } from '../../services/api';
 import type { RoomGuest, ApiFolioItem, Guest, FolioCategory } from '../../utils/types';
 
 import NewGuestModal from './NewGuestModal';
@@ -53,6 +53,8 @@ export interface RoomSellRoom {
   reservationNotes?: string;
   reservationCheckIn?: string;
   reservationCheckOut?: string;
+  reservationStatus?: string | null;
+  reservationOwnerName?: string | null;
 }
 
 interface RoomSellViewProps {
@@ -218,14 +220,20 @@ const RoomSellView: React.FC<RoomSellViewProps> = ({ room, onClose, onRoomUpdate
 
   /* ─── Check-in ─── */
   const handleCheckIn = () => {
-    if (guests.length === 0) {
+    const isReserved = room.reservationStatus === 'reserved' && room.reservationId;
+
+    if (!isReserved && guests.length === 0) {
       Alert.alert('Uyarı', 'Check-in için en az 1 misafir eklemelisiniz.');
       return;
     }
 
+    const message = isReserved
+      ? `Oda ${room.number} — Rezervasyon sahibi: ${room.reservationOwnerName}\n\nCheck-in yapılsın mı?`
+      : `Oda ${room.number} için check-in yapılsın mı?\n\nMisafir: ${guests.map((g) => g.guestName).join(', ')}`;
+
     Alert.alert(
       'Check-in',
-      `Oda ${room.number} için check-in yapılsın mı?\n\nMisafir: ${guests.map((g) => g.guestName).join(', ')}`,
+      message,
       [
         { text: 'İptal', style: 'cancel' },
         {
@@ -233,15 +241,22 @@ const RoomSellView: React.FC<RoomSellViewProps> = ({ room, onClose, onRoomUpdate
           onPress: async () => {
             setLoading(true);
             try {
-              /* 1. İlk misafir ile check-in → Reservation + Stay oluşur */
-              await roomsApi.checkIn(room.id, {
-                guestId: guests[0].guestId,
-                notes,
-              });
-
-              /* 2. Ek misafirler varsa add_guest ile ekle */
-              for (let i = 1; i < guests.length; i++) {
-                await roomsApi.addGuest(room.id, guests[i].guestId);
+              if (isReserved) {
+                /* Mevcut rezervasyonu check-in'e çevir */
+                await reservationsApi.checkIn(room.reservationId!);
+                /* Varsa ek misafirler ekle */
+                for (let i = 0; i < guests.length; i++) {
+                  await roomsApi.addGuest(room.id, guests[i].guestId);
+                }
+              } else {
+                /* Direkt check-in → Reservation + Stay oluşur */
+                await roomsApi.checkIn(room.id, {
+                  guestId: guests[0].guestId,
+                  notes,
+                });
+                for (let i = 1; i < guests.length; i++) {
+                  await roomsApi.addGuest(room.id, guests[i].guestId);
+                }
               }
 
               onRoomUpdate();
