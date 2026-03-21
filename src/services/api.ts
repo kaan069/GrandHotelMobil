@@ -22,7 +22,10 @@ import type {
   Reservation,
   ReservationDetail,
   ApiFolioItem,
+  MinibarProduct,
+  RoomMinibarItem,
 } from '../utils/types';
+import type { Fault } from '../components/tasks/FaultDetailView';
 
 /* ==================== BASE CLIENT ==================== */
 
@@ -220,11 +223,21 @@ export const reservationsApi = {
   /** Yeni rezervasyon oluştur (check-in yapmadan) */
   create: (data: {
     roomId: number; guestId: number;
-    plannedCheckIn: string; plannedCheckOut?: string;
+    checkIn: string; checkOut?: string;
     notes?: string; staffName?: string; companyId?: number;
   }) =>
     apiClient<Reservation>('/reservations/', {
       method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  /** Rezervasyon güncelle (sadece reserved/confirmed durumunda) */
+  update: (id: number, data: {
+    roomId?: number; checkIn?: string; checkOut?: string;
+    notes?: string; companyId?: number | null; totalAmount?: number;
+  }) =>
+    apiClient<Reservation>(`/reservations/${id}/`, {
+      method: 'PUT',
       body: JSON.stringify(data),
     }),
 
@@ -467,4 +480,126 @@ export const leavesApi = {
 
   getForEmployee: (employeeId: number) =>
     apiClient<ApiLeave[]>(`/staff/${employeeId}/leaves/`),
+};
+
+/* ==================== MULTIPART UPLOAD HELPER ==================== */
+
+async function apiMultipart<T>(endpoint: string, formData: FormData, method = 'POST'): Promise<T> {
+  const url = `${API_BASE_URL}${endpoint}`;
+
+  const response = await fetch(url, {
+    method,
+    body: formData,
+    // Content-Type header EKLENMEMELİ — fetch otomatik boundary ekler
+  });
+
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || `API Hatası: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+/* ==================== FAULTS (ARIZA) API ==================== */
+
+export const faultsApi = {
+  /** Arıza listesi (filtrelenebilir) */
+  getAll: (filters?: { status?: string }) => {
+    const params = new URLSearchParams();
+    if (filters?.status) params.append('status', filters.status);
+    const qs = params.toString();
+    return apiClient<Fault[]>(`/faults/${qs ? '?' + qs : ''}`);
+  },
+
+  /** Tekil arıza detayı */
+  getById: (id: number) =>
+    apiClient<Fault>(`/faults/${id}/`),
+
+  /** Yeni arıza oluştur (multipart/form-data) */
+  create: (data: {
+    room_number: string;
+    category: string;
+    description: string;
+    reported_by?: string;
+    photos?: string[];
+  }) => {
+    const formData = new FormData();
+    formData.append('room_number', data.room_number);
+    formData.append('category', data.category);
+    formData.append('description', data.description);
+    if (data.reported_by) formData.append('reported_by', data.reported_by);
+
+    if (data.photos) {
+      data.photos.forEach((uri) => {
+        formData.append('photos', {
+          uri,
+          type: 'image/jpeg',
+          name: `fault_${Date.now()}.jpg`,
+        } as any);
+      });
+    }
+
+    return apiMultipart<Fault>('/faults/', formData);
+  },
+
+  /** Arıza durumunu güncelle */
+  updateStatus: (id: number, status: string, resolvedBy?: string) =>
+    apiClient<Fault>(`/faults/${id}/status/`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        status,
+        ...(resolvedBy ? { resolved_by: resolvedBy } : {}),
+      }),
+    }),
+
+  /** Çözüm fotoğrafı yükle */
+  uploadResolutionPhotos: (id: number, photoUris: string[]) => {
+    const formData = new FormData();
+    photoUris.forEach((uri) => {
+      formData.append('photos', {
+        uri,
+        type: 'image/jpeg',
+        name: `resolution_${Date.now()}.jpg`,
+      } as any);
+    });
+    return apiMultipart<Fault>(`/faults/${id}/resolution-photos/`, formData);
+  },
+};
+
+/* ==================== MINIBAR API ==================== */
+
+export const minibarApi = {
+  /** Minibar ürünlerini getir (category='minibar' stok ürünleri + takip bilgisi) */
+  getProducts: () =>
+    apiClient<MinibarProduct[]>('/minibar/products/'),
+
+  /** Bir odanın minibar içeriğini getir */
+  getRoomMinibar: (roomId: number) =>
+    apiClient<RoomMinibarItem[]>(`/minibar/rooms/${roomId}/`),
+
+  /** Odanın minibarına ürün ekle */
+  addToRoom: (roomId: number, data: { productId: number; quantity: number; staffName?: string }) =>
+    apiClient<RoomMinibarItem>(`/minibar/rooms/${roomId}/add/`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  /** Minibardan ürün çıkar (stoka iade) */
+  removeFromRoom: (roomId: number, data: { productId: number; quantity: number }) =>
+    apiClient<void>(`/minibar/rooms/${roomId}/remove/`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  /** Ürün tüketildi (satıldı) — minibar azalır, folio charge oluşur */
+  consume: (roomId: number, data: { productId: number; quantity: number; staffName?: string }) =>
+    apiClient<{ folioItem: ApiFolioItem }>(`/minibar/rooms/${roomId}/consume/`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
 };

@@ -72,8 +72,6 @@ export interface Reservation {
   companyName: string | null;
   checkIn: string;
   checkOut: string | null;
-  plannedCheckIn: string | null;
-  plannedCheckOut: string | null;
   guestNames: string | null;
   guestCount: number;
   status: string;
@@ -121,6 +119,33 @@ export interface ApiFolioItem {
   amount: number | string;  // DecimalField string dönebilir
   date: string;
   createdBy?: string | null;
+}
+
+/* ==================== MİNİBAR ==================== */
+
+/** Minibar ürünü (stok category='minibar' olan ürünler) */
+export interface MinibarProduct {
+  id: number;
+  name: string;
+  price: number;
+  unit: string;
+  totalStock: number;
+  inMinibar: number;
+  sold: number;
+  availableStock: number;
+}
+
+/** Odadaki minibar kalemi */
+export interface RoomMinibarItem {
+  id: number;
+  roomId: number;
+  roomNumber: string;
+  productId: number;
+  productName: string;
+  quantity: number;
+  price: number;
+  placedBy: string;
+  placedAt: string;
 }
 
 /* ==================== FİRMA ==================== */

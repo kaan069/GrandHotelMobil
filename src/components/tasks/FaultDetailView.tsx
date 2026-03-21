@@ -32,7 +32,10 @@ export interface Fault {
   description: string;
   status: string;
   reportedBy: string;
+  resolvedBy: string;
+  resolvedAt: string | null;
   createdAt: string;
+  updatedAt: string;
   photos: string[];
   resolutionPhotos: string[];
 }
@@ -40,8 +43,8 @@ export interface Fault {
 interface FaultDetailViewProps {
   fault: Fault;
   onClose: () => void;
-  onUpdateStatus: (id: number, status: string) => void;
-  onResolve: (id: number) => void;
+  onUpdateStatus: (id: number, status: string) => void | Promise<void>;
+  onResolve: (id: number) => void | Promise<void>;
 }
 
 const FaultDetailView: React.FC<FaultDetailViewProps> = ({

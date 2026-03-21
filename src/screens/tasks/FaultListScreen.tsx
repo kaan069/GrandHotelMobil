@@ -6,7 +6,7 @@
  * Teknik personel arıza çözüm fotoğrafı ekleyerek kapatabilir.
  */
 
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -15,6 +15,8 @@ import {
   TouchableOpacity,
   Image,
   Alert,
+  ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -22,8 +24,11 @@ import * as ImagePicker from 'expo-image-picker';
 import { AppCard, StatusChip, EmptyState } from '../../components/common';
 import FaultDetailView from '../../components/tasks/FaultDetailView';
 import type { Fault } from '../../components/tasks/FaultDetailView';
+import useAuth from '../../hooks/useAuth';
+import useApi from '../../hooks/useApi';
+import { faultsApi } from '../../services/api';
 import { colors, spacing, fontSize, borderRadius } from '../../theme';
-import { FAULT_STATUS, FAULT_STATUS_LABELS, FAULT_STATUS_COLORS, FAULT_CATEGORIES } from '../../utils/constants';
+import { FAULT_STATUS, FAULT_STATUS_LABELS, FAULT_STATUS_COLORS, FAULT_CATEGORIES, ROLE_LABELS } from '../../utils/constants';
 
 interface FaultListScreenProps {
   onClose: () => void;
@@ -34,45 +39,9 @@ interface FilterOption {
   label: string;
 }
 
-/** Mock arıza verileri */
-const INITIAL_FAULTS: Fault[] = [
-  {
-    id: 1,
-    roomNumber: '201',
-    category: 'electric',
-    description: 'Yatak odası lambası çalışmıyor. Ampul değiştirilmeli.',
-    status: FAULT_STATUS.OPEN,
-    reportedBy: 'Ayşe Kaya',
-    createdAt: '2026-03-11T09:30:00',
-    photos: [],
-    resolutionPhotos: [],
-  },
-  {
-    id: 2,
-    roomNumber: '305',
-    category: 'plumbing',
-    description: 'Lavabo tıkanmış, su akışı çok yavaş.',
-    status: FAULT_STATUS.IN_PROGRESS,
-    reportedBy: 'Fatma Çelik',
-    createdAt: '2026-03-10T14:00:00',
-    photos: [],
-    resolutionPhotos: [],
-  },
-  {
-    id: 3,
-    roomNumber: '102',
-    category: 'aircon',
-    description: 'Klima soğutmuyor, sadece fan çalışıyor.',
-    status: FAULT_STATUS.RESOLVED,
-    reportedBy: 'Ali Öztürk',
-    createdAt: '2026-03-09T11:00:00',
-    photos: [],
-    resolutionPhotos: [],
-  },
-];
-
 const FaultListScreen: React.FC<FaultListScreenProps> = ({ onClose }) => {
-  const [faults, setFaults] = useState<Fault[]>(INITIAL_FAULTS);
+  const { user } = useAuth();
+  const { data: faults, loading, error, refetch } = useApi<Fault[]>(() => faultsApi.getAll());
   const [filter, setFilter] = useState('all');
   const [selectedFault, setSelectedFault] = useState<Fault | null>(null);
 
@@ -88,17 +57,21 @@ const FaultListScreen: React.FC<FaultListScreenProps> = ({ onClose }) => {
     return `${d.getDate().toString().padStart(2, '0')}.${(d.getMonth() + 1).toString().padStart(2, '0')}.${d.getFullYear()} ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
   };
 
-  /** Arıza durumunu güncelle */
-  const updateStatus = (id: number, newStatus: string) => {
-    setFaults((prev) =>
-      prev.map((f) => (f.id === id ? { ...f, status: newStatus } : f))
-    );
-    setSelectedFault((prev) =>
-      prev && prev.id === id ? { ...prev, status: newStatus } : prev
-    );
+  /** Arıza durumunu güncelle (API) */
+  const updateStatus = async (id: number, newStatus: string) => {
+    try {
+      const resolvedBy = newStatus === FAULT_STATUS.RESOLVED && user?.role
+        ? (ROLE_LABELS[user.role] || user.role)
+        : undefined;
+      await faultsApi.updateStatus(id, newStatus, resolvedBy);
+      await refetch();
+      setSelectedFault(null);
+    } catch (err: any) {
+      Alert.alert('Hata', err.message || 'Durum güncellenemedi');
+    }
   };
 
-  /** Çözüm fotoğrafı ekle ve arızayı kapat */
+  /** Çözüm fotoğrafı ekle ve arızayı kapat (API) */
   const handleResolve = async (faultId: number) => {
     Alert.alert('Arıza Çözümü', 'Çözüm fotoğrafı eklemek ister misiniz?', [
       {
@@ -107,31 +80,31 @@ const FaultListScreen: React.FC<FaultListScreenProps> = ({ onClose }) => {
           const result = await ImagePicker.launchCameraAsync({ quality: 0.7 });
           if (!result.canceled) {
             const photoUri = result.assets[0].uri;
-            setFaults((prev) =>
-              prev.map((f) =>
-                f.id === faultId
-                  ? {
-                      ...f,
-                      status: FAULT_STATUS.RESOLVED,
-                      resolutionPhotos: [...f.resolutionPhotos, photoUri],
-                    }
-                  : f
-              )
-            );
-            setSelectedFault((prev) =>
-              prev && prev.id === faultId
-                ? { ...prev, status: FAULT_STATUS.RESOLVED, resolutionPhotos: [...prev.resolutionPhotos, photoUri] }
-                : prev
-            );
-            Alert.alert('Başarılı', 'Arıza çözüldü olarak işaretlendi');
+            try {
+              await faultsApi.uploadResolutionPhotos(faultId, [photoUri]);
+              const resolvedBy = user?.role ? (ROLE_LABELS[user.role] || user.role) : undefined;
+              await faultsApi.updateStatus(faultId, FAULT_STATUS.RESOLVED, resolvedBy);
+              await refetch();
+              setSelectedFault(null);
+              Alert.alert('Başarılı', 'Arıza çözüldü olarak işaretlendi');
+            } catch (err: any) {
+              Alert.alert('Hata', err.message || 'İşlem başarısız');
+            }
           }
         },
       },
       {
         text: 'Fotoğrafsız Kapat',
-        onPress: () => {
-          updateStatus(faultId, FAULT_STATUS.RESOLVED);
-          Alert.alert('Başarılı', 'Arıza çözüldü olarak işaretlendi');
+        onPress: async () => {
+          try {
+            const resolvedBy = user?.role ? (ROLE_LABELS[user.role] || user.role) : undefined;
+            await faultsApi.updateStatus(faultId, FAULT_STATUS.RESOLVED, resolvedBy);
+            await refetch();
+            setSelectedFault(null);
+            Alert.alert('Başarılı', 'Arıza çözüldü olarak işaretlendi');
+          } catch (err: any) {
+            Alert.alert('Hata', err.message || 'İşlem başarısız');
+          }
         },
       },
       { text: 'İptal', style: 'cancel' },
@@ -139,9 +112,10 @@ const FaultListScreen: React.FC<FaultListScreenProps> = ({ onClose }) => {
   };
 
   /* Filtrelenmiş arızalar */
+  const allFaults = faults || [];
   const filteredFaults = filter === 'all'
-    ? faults
-    : faults.filter((f) => f.status === filter);
+    ? allFaults
+    : allFaults.filter((f) => f.status === filter);
 
   /** Filtre butonları */
   const FILTERS: FilterOption[] = [
@@ -178,10 +152,27 @@ const FaultListScreen: React.FC<FaultListScreenProps> = ({ onClose }) => {
       </View>
 
       {/* Arıza listesi */}
+      {loading && !faults ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.loadingText}>Arızalar yükleniyor...</Text>
+        </View>
+      ) : error ? (
+        <View style={styles.loadingContainer}>
+          <Ionicons name="alert-circle-outline" size={48} color={colors.error} />
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity onPress={refetch} style={styles.retryBtn}>
+            <Text style={styles.retryText}>Tekrar Dene</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
       <FlatList
         data={filteredFaults}
         keyExtractor={(item) => String(item.id)}
         contentContainerStyle={styles.list}
+        refreshControl={
+          <RefreshControl refreshing={loading} onRefresh={refetch} colors={[colors.primary]} />
+        }
         ListEmptyComponent={
           <EmptyState icon="construct-outline" title="Arıza bulunamadı" />
         }
@@ -244,6 +235,7 @@ const FaultListScreen: React.FC<FaultListScreenProps> = ({ onClose }) => {
           </AppCard>
         )}
       />
+      )}
 
       {/* Arıza Detay Overlay */}
       {selectedFault && (
@@ -373,6 +365,35 @@ const styles = StyleSheet.create({
   actionText: {
     fontSize: fontSize.sm,
     fontWeight: '600',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingTop: 80,
+    gap: 12,
+  },
+  loadingText: {
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+  },
+  errorText: {
+    fontSize: fontSize.sm,
+    color: colors.error,
+    textAlign: 'center',
+    paddingHorizontal: spacing.lg,
+  },
+  retryBtn: {
+    marginTop: 8,
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    backgroundColor: colors.primary,
+    borderRadius: borderRadius.sm,
+  },
+  retryText: {
+    fontSize: fontSize.sm,
+    fontWeight: '600',
+    color: colors.textWhite,
   },
 });
 

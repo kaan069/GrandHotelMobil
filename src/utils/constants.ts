@@ -102,6 +102,7 @@ export const STOCK_UNITS: readonly LabelValueOption[] = [
 export const STOCK_CATEGORIES: readonly LabelValueOption[] = [
   { value: 'food', label: 'Gıda' },
   { value: 'drink', label: 'İçecek' },
+  { value: 'minibar', label: 'Minibar' },
   { value: 'cleaning', label: 'Temizlik' },
   { value: 'office', label: 'Ofis Malzemesi' },
   { value: 'maintenance', label: 'Bakım/Onarım' },

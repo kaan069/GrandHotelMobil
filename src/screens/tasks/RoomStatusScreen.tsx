@@ -270,7 +270,12 @@ const RoomStatusScreen: React.FC<RoomStatusScreenProps> = ({ onClose }) => {
         }
         ListEmptyComponent={<EmptyState icon="bed-outline" title="Oda bulunamadı" />}
         renderItem={({ item: room }) => {
-          const isReserved = room.status === ROOM_STATUS.AVAILABLE && room.reservationStatus === 'reserved';
+          /* "Rezerve" sadece bugün girişli rezervasyonlarda gösterilir */
+          const today = new Date().toISOString().split('T')[0];
+          const checkInDate = room.reservationCheckIn ? room.reservationCheckIn.split('T')[0] : null;
+          const isReserved = room.status === ROOM_STATUS.AVAILABLE
+            && room.reservationStatus === 'reserved'
+            && checkInDate === today;
           const isClean = room.status === ROOM_STATUS.AVAILABLE && !isReserved;
           const isDirty = room.status === ROOM_STATUS.DIRTY;
           const displayColor = isReserved ? ROOM_STATUS_COLORS['reserved'] : ROOM_STATUS_COLORS[room.status];
@@ -338,7 +343,7 @@ const RoomStatusScreen: React.FC<RoomStatusScreenProps> = ({ onClose }) => {
                   </View>
                 )}
 
-                {/* Rezervasyon sahibi adı (rezerve ise) */}
+                {/* Rezervasyon sahibi adı (bugün girişli rezerve ise) */}
                 {isReserved && room.reservationOwnerName && (
                   <View style={styles.guestRow}>
                     <Ionicons name="person-outline" size={12} color={ROOM_STATUS_COLORS['reserved']} />

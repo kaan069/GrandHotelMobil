@@ -25,8 +25,10 @@ import {
   ROOM_STATUS_LABELS,
   ROOM_STATUS_COLORS,
   FAULT_CATEGORIES,
+  ROLES,
 } from '../../utils/constants';
 import useAuth from '../../hooks/useAuth';
+import RoomMinibarView from '../rooms/RoomMinibarView';
 
 export interface Room {
   id: number;
@@ -261,6 +263,16 @@ const RoomDetailView: React.FC<RoomDetailViewProps> = ({ room, onClose, onStatus
             </View>
           )}
         </AppCard>
+
+        {/* Minibar Bölümü — minibar veya housekeeping rolü */}
+        {(user?.role === ROLES.MINIBAR || user?.role === ROLES.HOUSEKEEPER) && (
+          <RoomMinibarView
+            roomId={room.id}
+            roomNumber={room.number}
+            roomStatus={room.status}
+            staffName={user?.name}
+          />
+        )}
 
         {/* Durum Değiştirme */}
         {actions.length > 0 && (

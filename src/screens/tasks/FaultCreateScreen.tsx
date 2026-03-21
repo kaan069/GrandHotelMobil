@@ -24,21 +24,12 @@ import * as ImagePicker from 'expo-image-picker';
 
 import { AppButton, AppInput, AppCard } from '../../components/common';
 import useAuth from '../../hooks/useAuth';
+import { faultsApi } from '../../services/api';
 import { colors, spacing, fontSize, borderRadius } from '../../theme';
-import { FAULT_CATEGORIES } from '../../utils/constants';
+import { FAULT_CATEGORIES, ROLE_LABELS } from '../../utils/constants';
 
 interface FaultCreateScreenProps {
   onClose: () => void;
-}
-
-interface FaultData {
-  roomNumber: string;
-  category: string;
-  description: string;
-  photos: string[];
-  reportedBy: string;
-  reportedByName: string;
-  createdAt: string;
 }
 
 const FaultCreateScreen: React.FC<FaultCreateScreenProps> = ({ onClose }) => {
@@ -49,6 +40,7 @@ const FaultCreateScreen: React.FC<FaultCreateScreenProps> = ({ onClose }) => {
   const [description, setDescription] = useState('');
   const [photos, setPhotos] = useState<string[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [submitting, setSubmitting] = useState(false);
 
   /** Galeriden fotoğraf seç */
   const pickFromGallery = async () => {
@@ -105,27 +97,29 @@ const FaultCreateScreen: React.FC<FaultCreateScreenProps> = ({ onClose }) => {
   };
 
   /** Arızayı gönder */
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!validate()) return;
 
-    /* Backend'e gönderilecek veri */
-    const faultData: FaultData = {
-      roomNumber: roomNumber.trim(),
-      category,
-      description: description.trim(),
-      photos,
-      reportedBy: String(user?.id ?? ''),
-      reportedByName: user?.name ?? '',
-      createdAt: new Date().toISOString(),
-    };
+    setSubmitting(true);
+    try {
+      await faultsApi.create({
+        room_number: roomNumber.trim(),
+        category,
+        description: description.trim(),
+        reported_by: user?.role ? (ROLE_LABELS[user.role] || user.role) : undefined,
+        photos: photos.length > 0 ? photos : undefined,
+      });
 
-    console.log('Arıza bildirildi:', faultData);
-
-    Alert.alert(
-      'Başarılı',
-      'Arıza kaydı oluşturuldu. Teknik ekibe bildirildi.',
-      [{ text: 'Tamam', onPress: onClose }]
-    );
+      Alert.alert(
+        'Başarılı',
+        'Arıza kaydı oluşturuldu. Teknik ekibe bildirildi.',
+        [{ text: 'Tamam', onPress: onClose }]
+      );
+    } catch (err: any) {
+      Alert.alert('Hata', err.message || 'Arıza bildirimi gönderilemedi');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -219,10 +213,11 @@ const FaultCreateScreen: React.FC<FaultCreateScreenProps> = ({ onClose }) => {
 
         {/* Gönder butonu */}
         <AppButton
-          title="Arıza Bildir"
+          title={submitting ? 'Gönderiliyor...' : 'Arıza Bildir'}
           onPress={handleSubmit}
           icon="send-outline"
           style={styles.submitButton}
+          disabled={submitting}
         />
       </ScrollView>
     </View>

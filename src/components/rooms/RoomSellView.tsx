@@ -218,9 +218,35 @@ const RoomSellView: React.FC<RoomSellViewProps> = ({ room, onClose, onRoomUpdate
     ]);
   };
 
+  /* ─── Rezervasyon İptal (reserved durumda) ─── */
+  const handleCancelReservation = () => {
+    if (!room.reservationId) return;
+    Alert.alert('Rezervasyon İptal', `Oda ${room.number} rezervasyonu iptal edilsin mi?`, [
+      { text: 'Hayır', style: 'cancel' },
+      {
+        text: 'Evet, İptal Et',
+        style: 'destructive',
+        onPress: async () => {
+          setLoading(true);
+          try {
+            await reservationsApi.cancel(room.reservationId!);
+            onRoomUpdate();
+          } catch (err: any) {
+            Alert.alert('Hata', err.message);
+          } finally {
+            setLoading(false);
+          }
+        },
+      },
+    ]);
+  };
+
   /* ─── Check-in ─── */
   const handleCheckIn = () => {
-    const isReserved = room.reservationStatus === 'reserved' && room.reservationId;
+    /* Bugün girişli rezervasyon kontrolü */
+    const today = new Date().toISOString().split('T')[0];
+    const checkInDate = room.reservationCheckIn ? room.reservationCheckIn.split('T')[0] : null;
+    const isReserved = room.reservationStatus === 'reserved' && room.reservationId && checkInDate === today;
 
     if (!isReserved && guests.length === 0) {
       Alert.alert('Uyarı', 'Check-in için en az 1 misafir eklemelisiniz.');
@@ -513,14 +539,26 @@ const RoomSellView: React.FC<RoomSellViewProps> = ({ room, onClose, onRoomUpdate
 
         {/* Aksiyon Butonları */}
         {isAvailable && (
-          <AppButton
-            title="Check-in Yap"
-            onPress={handleCheckIn}
-            icon="log-in-outline"
-            disabled={guests.length === 0}
-            loading={loading}
-            style={{ marginBottom: spacing.sm }}
-          />
+          <>
+            <AppButton
+              title="Check-in Yap"
+              onPress={handleCheckIn}
+              icon="log-in-outline"
+              disabled={guests.length === 0}
+              loading={loading}
+              style={{ marginBottom: spacing.sm }}
+            />
+            {room.reservationStatus === 'reserved' && room.reservationId && (
+              <AppButton
+                title="Rezervasyon İptal"
+                onPress={handleCancelReservation}
+                icon="close-circle-outline"
+                variant="danger"
+                loading={loading}
+                style={{ marginBottom: spacing.sm }}
+              />
+            )}
+          </>
         )}
 
         {isOccupied && (
