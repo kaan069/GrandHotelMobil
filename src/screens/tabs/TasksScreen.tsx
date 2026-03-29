@@ -44,6 +44,7 @@ import CompanyScreen from '../tasks/CompanyScreen';
 import ReservationHistoryScreen from '../tasks/ReservationHistoryScreen';
 import MyTasksScreen from '../tasks/MyTasksScreen';
 import CreateTaskScreen from '../tasks/CreateTaskScreen';
+import CameraScreen from '../tasks/CameraScreen';
 
 interface TaskModule {
   id: string;
@@ -110,6 +111,7 @@ const TASK_MODULES: Record<string, TaskModule[]> = {
     { id: 'shopping', label: 'Alışveriş Listesi', icon: 'cart-outline', color: '#22C55E', screen: 'ShoppingList' },
     { id: 'meal', label: 'Yemek Programı', icon: 'restaurant-outline', color: '#F59E0B', screen: 'MealProgram' },
     { id: 'stock', label: 'Stok Yönetimi', icon: 'cube-outline', color: '#EC4899', screen: 'Stock' },
+    { id: 'cameras', label: 'Kameralar', icon: 'videocam-outline', color: '#607D8B', screen: 'Cameras' },
     { id: 'reports', label: 'Raporlar', icon: 'bar-chart-outline', color: '#F97316', screen: 'Reports' },
     { id: 'fault-create', label: 'Arıza Bildir', icon: 'warning-outline', color: '#EF4444', screen: 'FaultCreate' },
   ],
@@ -126,6 +128,7 @@ const TASK_MODULES: Record<string, TaskModule[]> = {
     { id: 'meal', label: 'Yemek Programı', icon: 'restaurant-outline', color: '#F59E0B', screen: 'MealProgram' },
     { id: 'stock', label: 'Stok Yönetimi', icon: 'cube-outline', color: '#EC4899', screen: 'Stock' },
     { id: 'staff', label: 'Personel Yönetimi', icon: 'people-outline', color: '#1565C0', screen: 'Staff' },
+    { id: 'cameras', label: 'Kameralar', icon: 'videocam-outline', color: '#607D8B', screen: 'Cameras' },
     { id: 'reports', label: 'Raporlar', icon: 'bar-chart-outline', color: '#F97316', screen: 'Reports' },
     { id: 'fault-create', label: 'Arıza Bildir', icon: 'warning-outline', color: '#EF4444', screen: 'FaultCreate' },
   ],
@@ -147,6 +150,7 @@ const SCREEN_MAP: Record<string, React.ComponentType<{ onClose: () => void }>> =
   ReservationHistory: ReservationHistoryScreen,
   MyTasks: MyTasksScreen,
   CreateTask: CreateTaskScreen,
+  Cameras: CameraScreen,
 };
 
 const TasksScreen: React.FC = () => {

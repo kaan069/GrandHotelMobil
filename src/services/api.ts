@@ -654,3 +654,21 @@ export const minibarApi = {
       body: JSON.stringify(data),
     }),
 };
+
+/* ==================== CAMERA API ==================== */
+
+export interface ApiCamera {
+  id: number;
+  name: string;
+  location: string;
+  streamUrl: string;
+  snapshotUrl?: string;
+  status: 'online' | 'offline';
+  type: string;
+  order: number;
+}
+
+export const cameraApi = {
+  /** Tüm kameraları getir */
+  getAll: () => apiClient<ApiCamera[]>('/cameras/'),
+};
