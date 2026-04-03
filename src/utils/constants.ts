@@ -23,6 +23,7 @@ export const ROLES = {
   BARISTA: 'barista',
   BARMAN: 'barman',
   MINIBAR: 'minibar',
+  CASHIER: 'cashier',
 } as const;
 
 export type Role = typeof ROLES[keyof typeof ROLES];
@@ -44,6 +45,44 @@ export const ROLE_LABELS: Record<string, string> = {
   [ROLES.BARISTA]: 'Barista',
   [ROLES.BARMAN]: 'Barmen',
   [ROLES.MINIBAR]: 'Minibar Görevlisi',
+  [ROLES.CASHIER]: 'Kasiyer',
+};
+
+/* ==================== MASA DURUMLARI ==================== */
+
+export const TABLE_STATUS = {
+  EMPTY: 'empty',
+  OCCUPIED: 'occupied',
+  RESERVED: 'reserved',
+  BILL_REQUESTED: 'bill_requested',
+} as const;
+
+export const TABLE_STATUS_LABELS: Record<string, string> = {
+  [TABLE_STATUS.EMPTY]: 'Boş',
+  [TABLE_STATUS.OCCUPIED]: 'Dolu',
+  [TABLE_STATUS.RESERVED]: 'Rezerve',
+  [TABLE_STATUS.BILL_REQUESTED]: 'Hesap',
+};
+
+export const TABLE_STATUS_COLORS: Record<string, string> = {
+  [TABLE_STATUS.EMPTY]: '#22C55E',
+  [TABLE_STATUS.OCCUPIED]: '#EF4444',
+  [TABLE_STATUS.RESERVED]: '#3B82F6',
+  [TABLE_STATUS.BILL_REQUESTED]: '#F59E0B',
+};
+
+/* ==================== ADİSYON ÖDEME YÖNTEMLERİ ==================== */
+
+export const PAYMENT_METHODS = {
+  CASH: 'cash',
+  CARD: 'card',
+  ROOM_CHARGE: 'room_charge',
+} as const;
+
+export const PAYMENT_METHOD_LABELS: Record<string, string> = {
+  [PAYMENT_METHODS.CASH]: 'Nakit',
+  [PAYMENT_METHODS.CARD]: 'Kredi Kartı',
+  [PAYMENT_METHODS.ROOM_CHARGE]: 'Odaya Yansıt',
 };
 
 /* ==================== ARIZA DURUMLARI ==================== */
@@ -217,13 +256,6 @@ export const FOLIO_CATEGORY_LABELS: Record<string, string> = {
   discount: 'İndirim',
   payment: 'Ödeme',
 };
-
-export const PAYMENT_METHODS: readonly LabelValueOption[] = [
-  { value: 'cash', label: 'Nakit' },
-  { value: 'credit_card', label: 'Kredi Kartı' },
-  { value: 'bank_transfer', label: 'Havale/EFT' },
-  { value: 'other', label: 'Diğer' },
-];
 
 /* ==================== UYGULAMA AYARLARI ==================== */
 

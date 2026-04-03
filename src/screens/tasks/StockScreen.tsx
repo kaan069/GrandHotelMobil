@@ -108,7 +108,7 @@ const StockScreen: React.FC<StockScreenProps> = ({ onClose }) => {
         unit: formData.unit || 'adet',
         quantity: Number(formData.quantity) || 0,
         isMinibar: formData.isMinibar,
-        minibarPrice: formData.isMinibar ? Number(formData.minibarPrice) : null,
+        ...(formData.isMinibar ? { minibarPrice: Number(formData.minibarPrice) } : {}),
       };
 
       if (editItem) {

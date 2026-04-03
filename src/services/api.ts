@@ -25,6 +25,12 @@ import type {
   StockItem,
   MinibarProduct,
   RoomMinibarItem,
+  ApiServiceArea,
+  ApiTable,
+  ApiTab,
+  ApiTabItem,
+  ApiMenuCategory,
+  ApiMenuItem,
 } from '../utils/types';
 import type { Fault } from '../components/tasks/FaultDetailView';
 
@@ -671,4 +677,69 @@ export interface ApiCamera {
 export const cameraApi = {
   /** Tüm kameraları getir */
   getAll: () => apiClient<ApiCamera[]>('/cameras/'),
+};
+
+/* ==================== RESTORAN / CAFE ==================== */
+
+/** Hizmet alanları */
+export const serviceAreasApi = {
+  getAll: () => apiClient<ApiServiceArea[]>('/service-areas/'),
+};
+
+/** Masa yönetimi */
+export const tablesApi = {
+  getAll: (filters?: { serviceAreaId?: number; status?: string }) => {
+    const params = new URLSearchParams();
+    if (filters?.serviceAreaId) params.append('serviceAreaId', String(filters.serviceAreaId));
+    if (filters?.status) params.append('status', filters.status);
+    const qs = params.toString();
+    return apiClient<ApiTable[]>(`/tables/${qs ? '?' + qs : ''}`);
+  },
+  getById: (id: number) => apiClient<ApiTable>(`/tables/${id}/`),
+  open: (id: number, data: { guestName?: string; openedById?: number }) =>
+    apiClient<ApiTab>(`/tables/${id}/open/`, { method: 'POST', body: JSON.stringify(data) }),
+  addItem: (tableId: number, data: { menuItemId: number; quantity: number; notes?: string; openedById?: number }) =>
+    apiClient(`/tables/${tableId}/add_item/`, { method: 'POST', body: JSON.stringify(data) }),
+  close: (id: number) =>
+    apiClient<ApiTable>(`/tables/${id}/close/`, { method: 'POST' }),
+  transfer: (id: number, toTableId: number) =>
+    apiClient(`/tables/${id}/transfer/`, { method: 'POST', body: JSON.stringify({ toTableId }) }),
+};
+
+/** Adisyon (Tab) yönetimi */
+export const tabsApi = {
+  getAll: (filters?: { status?: string; roomId?: number; servicePoint?: string }) => {
+    const params = new URLSearchParams();
+    if (filters?.status) params.append('status', filters.status);
+    if (filters?.roomId) params.append('roomId', String(filters.roomId));
+    if (filters?.servicePoint) params.append('servicePoint', filters.servicePoint);
+    const qs = params.toString();
+    return apiClient<ApiTab[]>(`/tabs/${qs ? '?' + qs : ''}`);
+  },
+  getById: (id: number) => apiClient<ApiTab>(`/tabs/${id}/`),
+  create: (data: { roomId?: number; guestName: string; servicePoint: string; openedById?: number }) =>
+    apiClient<ApiTab>('/tabs/', { method: 'POST', body: JSON.stringify(data) }),
+  addItem: (tabId: number, data: { menuItemId?: number; description?: string; quantity: number; unitPrice: number; notes?: string }) =>
+    apiClient<ApiTabItem>(`/tabs/${tabId}/add_item/`, { method: 'POST', body: JSON.stringify(data) }),
+  updateItem: (tabId: number, itemId: number, quantity: number) =>
+    apiClient<ApiTabItem>(`/tabs/${tabId}/update_item/`, { method: 'POST', body: JSON.stringify({ itemId, quantity }) }),
+  removeItem: (tabId: number, itemId: number) =>
+    apiClient(`/tabs/${tabId}/remove_item/`, { method: 'POST', body: JSON.stringify({ itemId }) }),
+  close: (tabId: number) =>
+    apiClient<ApiTab>(`/tabs/${tabId}/close/`, { method: 'POST' }),
+  pay: (tabId: number, paymentMethod: string, registerId?: number, roomId?: number) =>
+    apiClient<ApiTab>(`/tabs/${tabId}/pay/`, { method: 'POST', body: JSON.stringify({ paymentMethod, registerId, roomId }) }),
+  cancel: (tabId: number) =>
+    apiClient<ApiTab>(`/tabs/${tabId}/cancel/`, { method: 'POST' }),
+  refund: (tabId: number, reason?: string) =>
+    apiClient<ApiTab>(`/tabs/${tabId}/refund/`, { method: 'POST', body: JSON.stringify({ reason }) }),
+};
+
+/** Menü yönetimi */
+export const menuApi = {
+  getCategories: () => apiClient<ApiMenuCategory[]>('/menu-categories/'),
+  getItems: (categoryId?: number) => {
+    const qs = categoryId ? `?categoryId=${categoryId}` : '';
+    return apiClient<ApiMenuItem[]>(`/menu-items/${qs}`);
+  },
 };

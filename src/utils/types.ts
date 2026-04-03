@@ -173,3 +173,85 @@ export interface Company {
   phone: string | null;
   email: string | null;
 }
+
+/* ==================== RESTORAN / CAFE ==================== */
+
+/** Hizmet alanı (restoran, cafe, bar, havuz bar) */
+export interface ApiServiceArea {
+  id: number;
+  name: string;
+  areaType: string;
+  isActive: boolean;
+  hasKitchen: boolean;
+  tableCount: number;
+}
+
+/** Restoran/cafe masası */
+export interface ApiTable {
+  id: number;
+  tableNumber: string;
+  serviceAreaId: number;
+  serviceAreaName: string;
+  capacity: number;
+  status: string;
+  isActive: boolean;
+  qrToken: string;
+  currentTabId: number | null;
+  currentTotal: string;
+  currentTab?: ApiTab;
+}
+
+/** Adisyon */
+export interface ApiTab {
+  id: number;
+  tabNo: string;
+  reservationId: number | null;
+  roomId: number | null;
+  roomNumber: string | null;
+  tableId: number | null;
+  tableNumber: string | null;
+  guestName: string;
+  servicePoint: string;
+  status: string;
+  openedByName: string | null;
+  totalAmount: string;
+  paymentMethod: string | null;
+  notes: string;
+  openedAt: string;
+  closedAt: string | null;
+  paidAt: string | null;
+  items?: ApiTabItem[];
+}
+
+/** Adisyon kalemi */
+export interface ApiTabItem {
+  id: number;
+  menuItemId: number | null;
+  menuItemName: string | null;
+  description: string;
+  quantity: number;
+  unitPrice: string;
+  totalPrice: string;
+  createdAt: string;
+}
+
+/** Menü kategorisi */
+export interface ApiMenuCategory {
+  id: number;
+  name: string;
+  sortOrder: number;
+  isActive: boolean;
+  itemCount?: number;
+}
+
+/** Menü ürünü */
+export interface ApiMenuItem {
+  id: number;
+  categoryId: number;
+  name: string;
+  description: string;
+  price: string;
+  imageUrl: string | null;
+  isAvailable: boolean;
+  sortOrder: number;
+}

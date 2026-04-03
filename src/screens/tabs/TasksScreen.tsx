@@ -45,6 +45,8 @@ import ReservationHistoryScreen from '../tasks/ReservationHistoryScreen';
 import MyTasksScreen from '../tasks/MyTasksScreen';
 import CreateTaskScreen from '../tasks/CreateTaskScreen';
 import CameraScreen from '../tasks/CameraScreen';
+import TablesScreen from '../tasks/TablesScreen';
+import KitchenScreen from '../tasks/KitchenScreen';
 
 interface TaskModule {
   id: string;
@@ -60,16 +62,46 @@ interface TaskModule {
  */
 const TASK_MODULES: Record<string, TaskModule[]> = {
   [ROLES.CHEF]: [
+    { id: 'kitchen', label: 'Mutfak Ekranı', icon: 'flame-outline', color: '#EF4444', screen: 'Kitchen' },
     { id: 'my-tasks', label: 'Görevlerim', icon: 'clipboard-outline', color: '#1565C0', screen: 'MyTasks' },
+    { id: 'tables', label: 'Masalar', icon: 'grid-outline', color: '#06B6D4', screen: 'Tables' },
     { id: 'shopping', label: 'Alışveriş Listesi', icon: 'cart-outline', color: '#22C55E', screen: 'ShoppingList' },
     { id: 'meal', label: 'Yemek Programı', icon: 'restaurant-outline', color: '#F59E0B', screen: 'MealProgram' },
     { id: 'fault-create', label: 'Arıza Bildir', icon: 'warning-outline', color: '#EF4444', screen: 'FaultCreate' },
   ],
   [ROLES.WAITER]: [
     { id: 'my-tasks', label: 'Görevlerim', icon: 'clipboard-outline', color: '#1565C0', screen: 'MyTasks' },
+    { id: 'tables', label: 'Masalar', icon: 'grid-outline', color: '#06B6D4', screen: 'Tables' },
     { id: 'room-service', label: 'Oda Servisi', icon: 'cafe-outline', color: '#8B5CF6', screen: 'RoomService' },
     { id: 'shopping', label: 'Alışveriş Listesi', icon: 'cart-outline', color: '#22C55E', screen: 'ShoppingList' },
     { id: 'meal', label: 'Yemek Programı', icon: 'restaurant-outline', color: '#F59E0B', screen: 'MealProgram' },
+    { id: 'fault-create', label: 'Arıza Bildir', icon: 'warning-outline', color: '#EF4444', screen: 'FaultCreate' },
+  ],
+  [ROLES.CASHIER]: [
+    { id: 'tables', label: 'Masalar', icon: 'grid-outline', color: '#06B6D4', screen: 'Tables' },
+    { id: 'my-tasks', label: 'Görevlerim', icon: 'clipboard-outline', color: '#1565C0', screen: 'MyTasks' },
+    { id: 'fault-create', label: 'Arıza Bildir', icon: 'warning-outline', color: '#EF4444', screen: 'FaultCreate' },
+  ],
+  [ROLES.BARISTA]: [
+    { id: 'my-tasks', label: 'Görevlerim', icon: 'clipboard-outline', color: '#1565C0', screen: 'MyTasks' },
+    { id: 'tables', label: 'Masalar', icon: 'grid-outline', color: '#06B6D4', screen: 'Tables' },
+    { id: 'meal', label: 'Yemek Programı', icon: 'restaurant-outline', color: '#F59E0B', screen: 'MealProgram' },
+    { id: 'fault-create', label: 'Arıza Bildir', icon: 'warning-outline', color: '#EF4444', screen: 'FaultCreate' },
+  ],
+  [ROLES.BARMAN]: [
+    { id: 'my-tasks', label: 'Görevlerim', icon: 'clipboard-outline', color: '#1565C0', screen: 'MyTasks' },
+    { id: 'tables', label: 'Masalar', icon: 'grid-outline', color: '#06B6D4', screen: 'Tables' },
+    { id: 'meal', label: 'Yemek Programı', icon: 'restaurant-outline', color: '#F59E0B', screen: 'MealProgram' },
+    { id: 'fault-create', label: 'Arıza Bildir', icon: 'warning-outline', color: '#EF4444', screen: 'FaultCreate' },
+  ],
+  [ROLES.RESTAURANT_MANAGER]: [
+    { id: 'tables', label: 'Masalar', icon: 'grid-outline', color: '#06B6D4', screen: 'Tables' },
+    { id: 'kitchen', label: 'Mutfak Ekranı', icon: 'flame-outline', color: '#EF4444', screen: 'Kitchen' },
+    { id: 'my-tasks', label: 'Görevlerim', icon: 'clipboard-outline', color: '#1565C0', screen: 'MyTasks' },
+    { id: 'create-task', label: 'Görev Ata', icon: 'add-circle-outline', color: '#E91E63', screen: 'CreateTask' },
+    { id: 'shopping', label: 'Alışveriş Listesi', icon: 'cart-outline', color: '#22C55E', screen: 'ShoppingList' },
+    { id: 'meal', label: 'Yemek Programı', icon: 'restaurant-outline', color: '#F59E0B', screen: 'MealProgram' },
+    { id: 'stock', label: 'Stok Yönetimi', icon: 'cube-outline', color: '#EC4899', screen: 'Stock' },
     { id: 'fault-create', label: 'Arıza Bildir', icon: 'warning-outline', color: '#EF4444', screen: 'FaultCreate' },
   ],
   [ROLES.TECHNICIAN]: [
@@ -101,6 +133,8 @@ const TASK_MODULES: Record<string, TaskModule[]> = {
   ],
   [ROLES.MANAGER]: [
     { id: 'my-tasks', label: 'Görevlerim', icon: 'clipboard-outline', color: '#1565C0', screen: 'MyTasks' },
+    { id: 'tables', label: 'Masalar', icon: 'grid-outline', color: '#06B6D4', screen: 'Tables' },
+    { id: 'kitchen', label: 'Mutfak Ekranı', icon: 'flame-outline', color: '#EF4444', screen: 'Kitchen' },
     { id: 'create-task', label: 'Görev Ata', icon: 'add-circle-outline', color: '#E91E63', screen: 'CreateTask' },
     { id: 'complaints', label: 'Şikayetler & Öneriler', icon: 'chatbubbles-outline', color: '#8B5CF6', screen: 'Complaints' },
     { id: 'fault-list', label: 'Arıza Listesi', icon: 'construct-outline', color: '#3B82F6', screen: 'FaultList' },
@@ -117,6 +151,8 @@ const TASK_MODULES: Record<string, TaskModule[]> = {
   ],
   [ROLES.PATRON]: [
     { id: 'my-tasks', label: 'Görevlerim', icon: 'clipboard-outline', color: '#1565C0', screen: 'MyTasks' },
+    { id: 'tables', label: 'Masalar', icon: 'grid-outline', color: '#06B6D4', screen: 'Tables' },
+    { id: 'kitchen', label: 'Mutfak Ekranı', icon: 'flame-outline', color: '#EF4444', screen: 'Kitchen' },
     { id: 'create-task', label: 'Görev Ata', icon: 'add-circle-outline', color: '#E91E63', screen: 'CreateTask' },
     { id: 'complaints', label: 'Şikayetler & Öneriler', icon: 'chatbubbles-outline', color: '#8B5CF6', screen: 'Complaints' },
     { id: 'fault-list', label: 'Arıza Listesi', icon: 'construct-outline', color: '#3B82F6', screen: 'FaultList' },
@@ -151,6 +187,8 @@ const SCREEN_MAP: Record<string, React.ComponentType<{ onClose: () => void }>> =
   MyTasks: MyTasksScreen,
   CreateTask: CreateTaskScreen,
   Cameras: CameraScreen,
+  Tables: TablesScreen,
+  Kitchen: KitchenScreen,
 };
 
 const TasksScreen: React.FC = () => {
