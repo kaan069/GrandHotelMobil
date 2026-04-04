@@ -382,6 +382,7 @@ export interface ApiEmployee {
   status: string;
   roles: string[];
   roleLabels: string[];
+  enabledModules?: string[];
   createdAt: string;
 }
 

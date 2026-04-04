@@ -16,6 +16,7 @@ export interface User {
   name: string;
   role: Role;
   roles: string[];
+  enabledModules: string[];
   branchCode: string;
   staffNumber: string;
   hireDate: string;
@@ -57,6 +58,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         name: employee.fullName,
         role: primaryRole,
         roles: employee.roles || [],
+        enabledModules: employee.enabledModules || ['base'],
         branchCode: '001',
         staffNumber: employee.staffNumber,
         hireDate: employee.hireDate,
