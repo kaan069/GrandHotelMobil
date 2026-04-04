@@ -145,19 +145,18 @@ const QRScreen: React.FC = () => {
         style={styles.camera}
         barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
         onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
-      >
-        {/* Tarama çerçevesi */}
-        <View style={styles.overlay}>
-          <View style={styles.scanFrame}>
-            <View style={[styles.corner, styles.topLeft]} />
-            <View style={[styles.corner, styles.topRight]} />
-            <View style={[styles.corner, styles.bottomLeft]} />
-            <View style={[styles.corner, styles.bottomRight]} />
-          </View>
-          <Text style={styles.scanText}>QR kodu çerçeveye yerleştirin</Text>
-          <Text style={styles.hintText}>Mesai QR okutun — otomatik giriş/çıkış</Text>
+      />
+      {/* Tarama çerçevesi — CameraView dışında, absolute positioning ile üstte */}
+      <View style={[styles.overlay, { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }]}>
+        <View style={styles.scanFrame}>
+          <View style={[styles.corner, styles.topLeft]} />
+          <View style={[styles.corner, styles.topRight]} />
+          <View style={[styles.corner, styles.bottomLeft]} />
+          <View style={[styles.corner, styles.bottomRight]} />
         </View>
-      </CameraView>
+        <Text style={styles.scanText}>QR kodu çerçeveye yerleştirin</Text>
+        <Text style={styles.hintText}>Mesai QR okutun — otomatik giriş/çıkış</Text>
+      </View>
     </View>
   );
 };

@@ -201,77 +201,77 @@ const KitchenScreen: React.FC<Props> = ({ onClose }) => {
   const preparingCount = orders.filter((o) => o.status === 'preparing').length;
   const readyCount = orders.filter((o) => o.status === 'ready').length;
 
+  // Siparişleri masaya/konuma göre grupla (hook'lar early return'den önce olmalı)
+  const grouped = React.useMemo(() => {
+    const map = new Map<string, OrderItem[]>();
+    orders.forEach((order) => {
+      const key = order.tableNumber
+        ? `Masa ${order.tableNumber}`
+        : order.roomNumber
+          ? `Oda ${order.roomNumber}`
+          : order.guestName || '?';
+      const list = map.get(key) || [];
+      list.push(order);
+      map.set(key, list);
+    });
+    return Array.from(map.entries());
+  }, [orders]);
+
   if (loading) return <LoadingState message="Siparişler yükleniyor..." />;
 
-  const renderOrder = ({ item: order }: { item: OrderItem }) => {
-    const elapsed = getElapsedMinutes(order.sentToKitchenAt);
-    const statusColor = getStatusColor(order.status);
-    const location = order.tableNumber
-      ? `Masa ${order.tableNumber}`
-      : order.roomNumber
-        ? `Oda ${order.roomNumber}`
-        : order.guestName || '?';
+  const renderGroupCard = (location: string, items: OrderItem[]) => {
+    const oldestElapsed = Math.max(...items.map((o) => getElapsedMinutes(o.sentToKitchenAt)));
+    const hasPending = items.some((o) => o.status === 'pending');
+    const hasPreparing = items.some((o) => o.status === 'preparing');
+    const groupColor = hasPending ? '#ef4444' : hasPreparing ? '#f59e0b' : '#22c55e';
 
     return (
-      <View style={[styles.orderCard, { borderLeftColor: statusColor }]}>
+      <View key={location} style={[styles.orderCard, { borderLeftColor: groupColor }]}>
         {/* Üst: Konum + Süre */}
         <View style={styles.orderHeader}>
           <Text style={styles.orderLocation}>{location}</Text>
-          <View style={[styles.timeBadge, { backgroundColor: getTimeColor(elapsed) }]}>
+          <View style={[styles.timeBadge, { backgroundColor: getTimeColor(oldestElapsed) }]}>
             <Ionicons name="time-outline" size={12} color="#fff" />
-            <Text style={styles.timeText}>{elapsed} dk</Text>
+            <Text style={styles.timeText}>{oldestElapsed} dk</Text>
           </View>
         </View>
+        <Text style={styles.orderTabNo}>{items[0]?.servicePoint} · {items.length} kalem</Text>
 
-        <Text style={styles.orderTabNo}>{order.tabNo}</Text>
-
-        {/* Ürün */}
-        <View style={styles.orderItemBox}>
-          <Text style={styles.orderItemText}>
-            {order.itemQuantity}x {order.itemDescription}
-          </Text>
-          {order.notes ? (
-            <Text style={styles.orderNotes}>⚠ {order.notes}</Text>
-          ) : null}
-        </View>
-
-        {/* Durum badge */}
-        <View style={[styles.statusBadge, { backgroundColor: statusColor }]}>
-          <Text style={styles.statusText}>{getStatusLabel(order.status)}</Text>
-        </View>
-
-        {/* Aksiyonlar */}
-        <View style={styles.orderActions}>
-          {order.status === 'pending' && (
-            <>
-              <TouchableOpacity
-                style={[styles.actionBtn, { backgroundColor: '#f59e0b' }]}
-                onPress={() => handleStart(order.id)}
-              >
-                <Ionicons name="play" size={18} color="#fff" />
-                <Text style={styles.actionBtnText}>Başla</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.actionBtn, { backgroundColor: '#ef4444', flex: 0.3 }]}
-                onPress={() => handleCancel(order.id)}
-              >
-                <Ionicons name="close" size={18} color="#fff" />
-              </TouchableOpacity>
-            </>
-          )}
-          {order.status === 'preparing' && (
-            <TouchableOpacity
-              style={[styles.actionBtn, { backgroundColor: '#22c55e' }]}
-              onPress={() => handleReady(order.id)}
-            >
-              <Ionicons name="checkmark" size={18} color="#fff" />
-              <Text style={styles.actionBtnText}>Hazır</Text>
-            </TouchableOpacity>
-          )}
-          {order.status === 'ready' && (
-            <Text style={styles.readyLabel}>✓ Servis bekliyor</Text>
-          )}
-        </View>
+        {/* Ürün listesi */}
+        {items.map((order) => {
+          const statusColor = getStatusColor(order.status);
+          return (
+            <View key={order.id} style={[styles.orderItemRow, { borderLeftColor: statusColor }]}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.orderItemText}>
+                  {order.itemQuantity}x {order.itemDescription}
+                </Text>
+                {order.notes ? <Text style={styles.orderNotes}>{order.notes}</Text> : null}
+              </View>
+              {/* Kalem aksiyonları */}
+              {order.status === 'pending' && (
+                <View style={{ flexDirection: 'row', gap: 4 }}>
+                  <TouchableOpacity style={styles.miniBtn} onPress={() => handleStart(order.id)}>
+                    <Ionicons name="play" size={16} color="#f59e0b" />
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.miniBtn} onPress={() => handleCancel(order.id)}>
+                    <Ionicons name="close" size={16} color="#ef4444" />
+                  </TouchableOpacity>
+                </View>
+              )}
+              {order.status === 'preparing' && (
+                <TouchableOpacity style={styles.miniBtn} onPress={() => handleReady(order.id)}>
+                  <Ionicons name="checkmark" size={16} color="#22c55e" />
+                </TouchableOpacity>
+              )}
+              {order.status === 'ready' && (
+                <View style={[styles.miniStatusBadge, { backgroundColor: '#22c55e' }]}>
+                  <Text style={styles.miniStatusText}>Hazır</Text>
+                </View>
+              )}
+            </View>
+          );
+        })}
       </View>
     );
   };
@@ -317,17 +317,17 @@ const KitchenScreen: React.FC<Props> = ({ onClose }) => {
         </ScrollView>
       )}
 
-      {/* Sipariş listesi */}
-      <FlatList
-        data={orders}
-        renderItem={renderOrder}
-        keyExtractor={(item) => String(item.id)}
+      {/* Sipariş listesi — masaya göre gruplanmış */}
+      <ScrollView
         contentContainerStyle={styles.listContent}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchOrders(); }} />}
-        ListEmptyComponent={<EmptyState icon="restaurant-outline" title="Aktif Sipariş Yok" description="Yeni siparişler burada görünecek" />}
-        numColumns={2}
-        columnWrapperStyle={styles.row}
-      />
+      >
+        {grouped.length === 0 ? (
+          <EmptyState icon="restaurant-outline" title="Aktif Sipariş Yok" description="Yeni siparişler burada görünecek" />
+        ) : (
+          grouped.map(([location, items]) => renderGroupCard(location, items))
+        )}
+      </ScrollView>
     </View>
   );
 };
@@ -367,7 +367,7 @@ const styles = StyleSheet.create({
   listContent: { padding: spacing.sm },
   row: { justifyContent: 'space-between' },
   orderCard: {
-    width: '48.5%',
+    width: '100%',
     backgroundColor: colors.card,
     borderRadius: borderRadius.md,
     padding: spacing.sm,
@@ -396,14 +396,31 @@ const styles = StyleSheet.create({
   },
   timeText: { fontSize: fontSize.xs, fontWeight: '700', color: '#fff' },
   orderTabNo: { fontSize: fontSize.xs, color: colors.textSecondary, marginBottom: spacing.xs },
-  orderItemBox: {
+  orderItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: '#f8fafc',
     padding: spacing.sm,
     borderRadius: borderRadius.sm,
-    marginBottom: spacing.xs,
+    marginTop: spacing.xs,
+    borderLeftWidth: 3,
   },
-  orderItemText: { fontSize: fontSize.lg, fontWeight: '700', color: colors.textPrimary },
-  orderNotes: { fontSize: fontSize.sm, fontWeight: '600', color: '#ef4444', marginTop: 4 },
+  orderItemText: { fontSize: fontSize.md, fontWeight: '700', color: colors.textPrimary },
+  orderNotes: { fontSize: fontSize.xs, fontWeight: '600', color: '#ef4444', marginTop: 2 },
+  miniBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#f1f5f9',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  miniStatusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  miniStatusText: { fontSize: 10, fontWeight: '700', color: '#fff' },
   statusBadge: {
     alignSelf: 'flex-start',
     paddingHorizontal: spacing.sm,
