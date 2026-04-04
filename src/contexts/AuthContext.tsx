@@ -20,6 +20,8 @@ export interface User {
   branchCode: string;
   staffNumber: string;
   hireDate: string;
+  hotelId: number;
+  hotelName: string;
 }
 
 export interface AuthContextType {
@@ -34,6 +36,7 @@ export interface AuthContextType {
 export const AuthContext = createContext<AuthContextType | null>(null);
 
 const STORAGE_KEY = 'grandhotel_mobile_user';
+const HOTEL_ID_KEY = 'grandhotel_mobile_hotel_id';
 
 interface AuthProviderProps {
   children: ReactNode;
@@ -44,10 +47,10 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   const [loading, setLoading] = useState(false);
 
   /** Backend API ile giriş yap */
-  const login = useCallback(async (_branchCode: string, staffNumber: string, password: string): Promise<User> => {
+  const login = useCallback(async (branchCode: string, staffNumber: string, password: string): Promise<User> => {
     setLoading(true);
     try {
-      const employee = await staffApi.login({ staffNumber, password });
+      const employee = await staffApi.login({ branchCode, staffNumber, password });
 
       const primaryRole = (employee.roles && employee.roles.length > 0
         ? employee.roles[0]
@@ -59,14 +62,17 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         role: primaryRole,
         roles: employee.roles || [],
         enabledModules: employee.enabledModules || ['base'],
-        branchCode: '001',
+        branchCode: employee.branchCode || '001',
         staffNumber: employee.staffNumber,
         hireDate: employee.hireDate,
+        hotelId: employee.hotelId || 1,
+        hotelName: employee.hotelName || 'Grand Hotel',
       };
 
       setUser(userData);
       try {
         await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(userData));
+        await AsyncStorage.setItem(HOTEL_ID_KEY, String(userData.hotelId));
       } catch {
         /* Storage kullanılamıyorsa oturum sadece bellekte tutulur */
       }
@@ -81,6 +87,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     setUser(null);
     try {
       await AsyncStorage.removeItem(STORAGE_KEY);
+      await AsyncStorage.removeItem(HOTEL_ID_KEY);
     } catch {
       /* Storage kullanılamıyorsa sessizce geç */
     }

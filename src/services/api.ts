@@ -14,6 +14,7 @@
  *   reportsApi     — raporlama
  */
 
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_BASE_URL } from '../utils/constants';
 import type {
   ApiRoom,
@@ -54,9 +55,18 @@ import type { Fault } from '../components/tasks/FaultDetailView';
 async function apiClient<T>(endpoint: string, options?: RequestInit): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`;
 
+  /* AsyncStorage'dan hotel ID al (varsa header'a ekle) */
+  let hotelId: string | null = null;
+  try {
+    hotelId = await AsyncStorage.getItem('grandhotel_mobile_hotel_id');
+  } catch {
+    /* Storage kullanılamıyorsa sessizce geç */
+  }
+
   const response = await fetch(url, {
     headers: {
       'Content-Type': 'application/json',
+      ...(hotelId ? { 'X-Hotel-Id': hotelId } : {}),
       ...(options?.headers || {}),
     },
     ...options,
@@ -383,6 +393,9 @@ export interface ApiEmployee {
   roles: string[];
   roleLabels: string[];
   enabledModules?: string[];
+  branchCode?: string;
+  hotelId?: number;
+  hotelName?: string;
   createdAt: string;
 }
 
@@ -433,7 +446,7 @@ export const staffApi = {
   delete: (id: number) =>
     apiClient<void>(`/staff/${id}/`, { method: 'DELETE' }),
 
-  login: (data: { staffNumber: string; password: string }) =>
+  login: (data: { branchCode: string; staffNumber: string; password: string }) =>
     apiClient<ApiEmployee>('/staff/login/', { method: 'POST', body: JSON.stringify(data) }),
 
   subordinates: (id: number) =>
