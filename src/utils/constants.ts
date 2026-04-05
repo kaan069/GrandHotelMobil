@@ -260,4 +260,8 @@ export const FOLIO_CATEGORY_LABELS: Record<string, string> = {
 /* ==================== UYGULAMA AYARLARI ==================== */
 
 export const APP_NAME = 'GrandHotel';
-export const API_BASE_URL = 'http://localhost:8000/api';
+// Mobil cihaz localhost'a erişemez — Mac'in WiFi IP'sini kullanır
+// Production'da sunucu URL'i yazılacak (örn: https://api.grandhotel.com/api)
+import { Platform } from 'react-native';
+const DEV_HOST = Platform.OS === 'web' ? 'localhost' : '192.168.1.106';
+export const API_BASE_URL = `http://${DEV_HOST}:8000/api`;
