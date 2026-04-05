@@ -12,9 +12,14 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.kaansaka.grandhotelmobile",
+      "infoPlist": {
+        "NFCReaderUsageDescription": "Mesai giriş/çıkış için NFC kullanılır"
+      }
     },
     "android": {
+      "permissions": ["android.permission.NFC", "android.permission.CAMERA", "android.permission.VIBRATE"],
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",

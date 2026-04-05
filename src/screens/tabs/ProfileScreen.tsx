@@ -50,17 +50,25 @@ const ProfileScreen: React.FC = () => {
   const [showEarnings, setShowEarnings] = useState(false);
   const [isOnLeave, setIsOnLeave] = useState(false);
   const [leaveInfo, setLeaveInfo] = useState<{ used: number; remaining: number; entitlement: number } | null>(null);
+  const [workInfo, setWorkInfo] = useState<{ consecutive: number; total: number; weeklyEarned: number; weeklyUsed: number; weeklyRemaining: number } | null>(null);
 
-  /* Backend'den izin bilgisi çek */
+  /* Backend'den izin + çalışma bilgisi çek */
   useEffect(() => {
     if (!user) return;
     staffApi.getById(user.id)
-      .then((emp) => {
-        setIsOnLeave(emp.isOnLeaveToday);
+      .then((emp: Record<string, unknown>) => {
+        setIsOnLeave(emp.isOnLeaveToday as boolean);
         setLeaveInfo({
-          used: emp.usedAnnualLeave,
-          remaining: emp.remainingAnnualLeave,
-          entitlement: emp.annualLeaveEntitlement,
+          used: emp.usedAnnualLeave as number,
+          remaining: emp.remainingAnnualLeave as number,
+          entitlement: emp.annualLeaveEntitlement as number,
+        });
+        setWorkInfo({
+          consecutive: (emp.consecutiveWorkDays as number) || 0,
+          total: (emp.totalWorkDays as number) || 0,
+          weeklyEarned: (emp.weeklyLeaveEarned as number) || 0,
+          weeklyUsed: (emp.weeklyLeaveUsed as number) || 0,
+          weeklyRemaining: (emp.weeklyLeaveRemaining as number) || 0,
         });
       })
       .catch(() => {});
@@ -151,6 +159,48 @@ const ProfileScreen: React.FC = () => {
 
         {/* İzinlerim */}
         <LeaveCard hireDate={user.hireDate} leaveInfo={leaveInfo} />
+
+        {/* Çalışma Durumu */}
+        {workInfo && (
+          <AppCard style={styles.leaveCard}>
+            <Text style={styles.leaveTitle}>Çalışma Durumu</Text>
+            <View style={styles.divider} />
+
+            {/* Ardışık çalışma */}
+            <View style={{ marginBottom: 12 }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                <Text style={{ fontSize: 13, color: colors.textSecondary }}>Ardışık Çalışma</Text>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: colors.textPrimary }}>{workInfo.consecutive}/6 gün</Text>
+              </View>
+              <View style={{ height: 8, backgroundColor: '#e2e8f0', borderRadius: 4, overflow: 'hidden' }}>
+                <View style={{ height: 8, backgroundColor: workInfo.consecutive >= 5 ? '#f59e0b' : colors.primary, borderRadius: 4, width: `${(workInfo.consecutive / 6) * 100}%` }} />
+              </View>
+              {workInfo.consecutive >= 4 && (
+                <Text style={{ fontSize: 11, color: '#f59e0b', marginTop: 4 }}>
+                  {6 - workInfo.consecutive} gün sonra haftalık izin hakkı kazanacaksınız
+                </Text>
+              )}
+            </View>
+
+            {/* İstatistikler */}
+            <View style={{ flexDirection: 'row', justifyContent: 'space-around' }}>
+              <View style={{ alignItems: 'center' }}>
+                <Text style={{ fontSize: 20, fontWeight: '800', color: colors.primary }}>{workInfo.total}</Text>
+                <Text style={{ fontSize: 11, color: colors.textSecondary }}>Toplam Gün</Text>
+              </View>
+              <View style={{ width: 1, backgroundColor: colors.border }} />
+              <View style={{ alignItems: 'center' }}>
+                <Text style={{ fontSize: 20, fontWeight: '800', color: '#22c55e' }}>{workInfo.weeklyEarned}</Text>
+                <Text style={{ fontSize: 11, color: colors.textSecondary }}>Kazanılan İzin</Text>
+              </View>
+              <View style={{ width: 1, backgroundColor: colors.border }} />
+              <View style={{ alignItems: 'center' }}>
+                <Text style={{ fontSize: 20, fontWeight: '800', color: workInfo.weeklyRemaining > 0 ? '#f59e0b' : colors.textDisabled }}>{workInfo.weeklyRemaining}</Text>
+                <Text style={{ fontSize: 11, color: colors.textSecondary }}>Kalan H. İzin</Text>
+              </View>
+            </View>
+          </AppCard>
+        )}
 
         {/* Menü öğeleri */}
         <AppCard style={styles.menuCard}>
