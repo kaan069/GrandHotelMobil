@@ -25,6 +25,7 @@ import { ROLE_LABELS, APP_NAME } from '../../utils/constants';
 import { calculateAnnualLeave, getYearsOfService } from '../../utils/leaveCalculator';
 import { staffApi } from '../../services/api';
 import ShiftsScreen from '../tasks/ShiftsScreen';
+import EarningsScreen from './EarningsScreen';
 
 interface InfoRowProps {
   icon: keyof typeof Ionicons.glyphMap;
@@ -46,6 +47,7 @@ interface MenuItemProps {
 const ProfileScreen: React.FC = () => {
   const { user, logout } = useAuth();
   const [showShifts, setShowShifts] = useState(false);
+  const [showEarnings, setShowEarnings] = useState(false);
   const [isOnLeave, setIsOnLeave] = useState(false);
   const [leaveInfo, setLeaveInfo] = useState<{ used: number; remaining: number; entitlement: number } | null>(null);
 
@@ -121,6 +123,24 @@ const ProfileScreen: React.FC = () => {
           <Ionicons name="chevron-forward" size={20} color={colors.textDisabled} />
         </TouchableOpacity>
 
+        {/* Kazançlarım Butonu */}
+        <TouchableOpacity
+          style={styles.shiftsButton}
+          activeOpacity={0.7}
+          onPress={() => setShowEarnings(true)}
+        >
+          <View style={styles.shiftsLeft}>
+            <View style={[styles.shiftsIcon, { backgroundColor: '#dcfce7' }]}>
+              <Ionicons name="cash-outline" size={22} color="#22c55e" />
+            </View>
+            <View>
+              <Text style={styles.shiftsTitle}>Kazançlarım</Text>
+              <Text style={styles.shiftsSubtitle}>Maaş ve komisyon detayları</Text>
+            </View>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={colors.textDisabled} />
+        </TouchableOpacity>
+
         {/* Bugün izinli banner */}
         {isOnLeave && (
           <View style={styles.leaveBanner}>
@@ -162,6 +182,16 @@ const ProfileScreen: React.FC = () => {
         onRequestClose={() => setShowShifts(false)}
       >
         <ShiftsScreen onClose={() => setShowShifts(false)} />
+      </Modal>
+
+      {/* Kazançlarım Modal */}
+      <Modal
+        visible={showEarnings}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowEarnings(false)}
+      >
+        <EarningsScreen onClose={() => setShowEarnings(false)} />
       </Modal>
     </View>
   );

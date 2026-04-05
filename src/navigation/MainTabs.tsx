@@ -21,6 +21,7 @@ import ReportsScreen from '../screens/reports/ReportsScreen';
 import useAuth from '../hooks/useAuth';
 import { ROLES } from '../utils/constants';
 import { colors } from '../theme';
+import { NotificationProvider } from '../contexts/NotificationContext';
 
 type MainTabsParamList = {
   Tasks: undefined;
@@ -55,6 +56,7 @@ const MainTabs: React.FC = () => {
   const canViewReports = user?.roles?.some((r) => REPORT_ROLES.includes(r as any)) ?? false;
 
   return (
+    <NotificationProvider>
     <Tab.Navigator
       screenOptions={{
         headerShown: false,
@@ -112,6 +114,7 @@ const MainTabs: React.FC = () => {
         }}
       />
     </Tab.Navigator>
+    </NotificationProvider>
   );
 };
 

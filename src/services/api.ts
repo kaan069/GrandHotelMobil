@@ -757,3 +757,30 @@ export const menuApi = {
     return apiClient<ApiMenuItem[]>(`/menu-items/${qs}`);
   },
 };
+
+/* ==================== KOMİSYON API ==================== */
+
+export interface CommissionItem {
+  tabNo: string;
+  tableNumber: string;
+  tabTotal: string;
+  commissionRate: string;
+  commissionAmount: string;
+  date: string;
+}
+
+export interface MyCommissionsData {
+  totalEarned: string;
+  totalSales: string;
+  count: number;
+  items: CommissionItem[];
+}
+
+export const commissionApi = {
+  getMy: (staffNumber: string, filters?: { dateFrom?: string; dateTo?: string }) => {
+    const params = new URLSearchParams({ staffNumber });
+    if (filters?.dateFrom) params.append('dateFrom', filters.dateFrom);
+    if (filters?.dateTo) params.append('dateTo', filters.dateTo);
+    return apiClient<MyCommissionsData>(`/commission/my/?${params.toString()}`);
+  },
+};

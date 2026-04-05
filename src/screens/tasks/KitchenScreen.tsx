@@ -31,6 +31,7 @@ import { serviceAreasApi } from '../../services/api';
 import { API_BASE_URL } from '../../utils/constants';
 import type { ApiServiceArea } from '../../utils/types';
 import useRestaurantWebSocket from '../../hooks/useRestaurantWebSocket';
+import useAudioNotification from '../../hooks/useAudioNotification';
 
 interface OrderItem {
   id: number;
@@ -112,6 +113,7 @@ const KitchenScreen: React.FC<Props> = ({ onClose }) => {
   const [serviceAreas, setServiceAreas] = useState<ApiServiceArea[]>([]);
   const [selectedArea, setSelectedArea] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
+  const { play } = useAudioNotification();
   const [refreshing, setRefreshing] = useState(false);
 
   // Geçen süre güncellemesi
@@ -150,7 +152,7 @@ const KitchenScreen: React.FC<Props> = ({ onClose }) => {
         if (prev.find((o) => o.id === order.id)) return prev;
         return [order, ...prev];
       });
-      // TODO: Sesli bildirim (react-native-sound veya expo-av)
+      play('new_order');
     },
     onOrderStatusUpdate: (updatedOrder) => {
       setOrders((prev) =>
