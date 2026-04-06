@@ -174,6 +174,10 @@ export const guestsApi = {
   /** Misafirin rezervasyon geçmişi */
   stayHistory: (id: number) =>
     apiClient<Reservation[]>(`/guests/${id}/stay_history/`),
+
+  /** TC ile müşteri kontrolü */
+  checkTc: (tc: string) =>
+    apiClient<{ found: boolean; isBlocked?: boolean; guest?: Guest }>(`/guests/check_tc/?tc=${encodeURIComponent(tc)}`),
 };
 
 /* ==================== COMPANIES API ==================== */

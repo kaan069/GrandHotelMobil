@@ -15,7 +15,10 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.kaansaka.grandhotelmobile",
       "infoPlist": {
-        "NFCReaderUsageDescription": "Mesai giriş/çıkış için NFC kullanılır"
+        "NFCReaderUsageDescription": "Mesai giriş/çıkış için NFC kullanılır",
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": true
+        }
       }
     },
     "android": {
