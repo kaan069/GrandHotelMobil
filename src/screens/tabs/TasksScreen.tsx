@@ -47,6 +47,7 @@ import CreateTaskScreen from '../tasks/CreateTaskScreen';
 import CameraScreen from '../tasks/CameraScreen';
 import TablesScreen from '../tasks/TablesScreen';
 import KitchenScreen from '../tasks/KitchenScreen';
+import MinibarRoomsScreen from '../tasks/MinibarRoomsScreen';
 
 interface TaskModule {
   id: string;
@@ -114,10 +115,12 @@ const TASK_MODULES: Record<string, TaskModule[]> = {
   [ROLES.HOUSEKEEPER]: [
     { id: 'my-tasks', label: 'Görevlerim', icon: 'clipboard-outline', color: '#1565C0', screen: 'MyTasks', module: 'staff' },
     { id: 'room-status', label: 'Oda Durumu', icon: 'bed-outline', color: '#06B6D4', screen: 'RoomStatus', module: 'base' },
+    { id: 'minibar-rooms', label: 'Minibar Kontrol', icon: 'wine-outline', color: '#8B5CF6', screen: 'MinibarRooms', module: 'minibar' },
     { id: 'meal', label: 'Yemek Programı', icon: 'restaurant-outline', color: '#F59E0B', screen: 'MealProgram', module: 'restaurant' },
     { id: 'fault-create', label: 'Arıza Bildir', icon: 'warning-outline', color: '#EF4444', screen: 'FaultCreate', module: 'staff' },
   ],
   [ROLES.MINIBAR]: [
+    { id: 'minibar-rooms', label: 'Minibar Kontrol', icon: 'wine-outline', color: '#8B5CF6', screen: 'MinibarRooms', module: 'minibar' },
     { id: 'my-tasks', label: 'Görevlerim', icon: 'clipboard-outline', color: '#1565C0', screen: 'MyTasks', module: 'staff' },
     { id: 'room-status', label: 'Oda Durumu', icon: 'bed-outline', color: '#06B6D4', screen: 'RoomStatus', module: 'base' },
     { id: 'stock', label: 'Stok Yönetimi', icon: 'cube-outline', color: '#EC4899', screen: 'Stock', module: 'minibar' },
@@ -146,6 +149,7 @@ const TASK_MODULES: Record<string, TaskModule[]> = {
     { id: 'shopping', label: 'Alışveriş Listesi', icon: 'cart-outline', color: '#22C55E', screen: 'ShoppingList', module: 'restaurant' },
     { id: 'meal', label: 'Yemek Programı', icon: 'restaurant-outline', color: '#F59E0B', screen: 'MealProgram', module: 'restaurant' },
     { id: 'stock', label: 'Stok Yönetimi', icon: 'cube-outline', color: '#EC4899', screen: 'Stock', module: 'minibar' },
+    { id: 'minibar-rooms', label: 'Minibar Kontrol', icon: 'wine-outline', color: '#8B5CF6', screen: 'MinibarRooms', module: 'minibar' },
     { id: 'cameras', label: 'Kameralar', icon: 'videocam-outline', color: '#607D8B', screen: 'Cameras', module: 'cameras' },
     { id: 'reports', label: 'Raporlar', icon: 'bar-chart-outline', color: '#F97316', screen: 'Reports', module: 'base' },
     { id: 'fault-create', label: 'Arıza Bildir', icon: 'warning-outline', color: '#EF4444', screen: 'FaultCreate', module: 'staff' },
@@ -164,6 +168,7 @@ const TASK_MODULES: Record<string, TaskModule[]> = {
     { id: 'shopping', label: 'Alışveriş Listesi', icon: 'cart-outline', color: '#22C55E', screen: 'ShoppingList', module: 'restaurant' },
     { id: 'meal', label: 'Yemek Programı', icon: 'restaurant-outline', color: '#F59E0B', screen: 'MealProgram', module: 'restaurant' },
     { id: 'stock', label: 'Stok Yönetimi', icon: 'cube-outline', color: '#EC4899', screen: 'Stock', module: 'minibar' },
+    { id: 'minibar-rooms', label: 'Minibar Kontrol', icon: 'wine-outline', color: '#8B5CF6', screen: 'MinibarRooms', module: 'minibar' },
     { id: 'staff', label: 'Personel Yönetimi', icon: 'people-outline', color: '#1565C0', screen: 'Staff', module: 'staff' },
     { id: 'cameras', label: 'Kameralar', icon: 'videocam-outline', color: '#607D8B', screen: 'Cameras', module: 'cameras' },
     { id: 'reports', label: 'Raporlar', icon: 'bar-chart-outline', color: '#F97316', screen: 'Reports', module: 'base' },
@@ -190,6 +195,7 @@ const SCREEN_MAP: Record<string, React.ComponentType<{ onClose: () => void }>> =
   Cameras: CameraScreen,
   Tables: TablesScreen,
   Kitchen: KitchenScreen,
+  MinibarRooms: MinibarRoomsScreen,
 };
 
 const TasksScreen: React.FC = () => {

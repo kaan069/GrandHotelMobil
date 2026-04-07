@@ -260,16 +260,17 @@ export const FOLIO_CATEGORY_LABELS: Record<string, string> = {
 /* ==================== UYGULAMA AYARLARI ==================== */
 
 export const APP_NAME = 'GrandHotel';
-// Varsayılan API URL — otelin kendi sunucusu
+// Varsayılan API URL — sunucu
 // Geliştirici modu ile değiştirilebilir (login ekranında logo'ya 5x tıkla)
 import { Platform } from 'react-native';
+const PRODUCTION_URL = 'http://89.252.152.168/api';
 const getDefaultHost = () => {
   if (Platform.OS === 'web') return 'localhost';
   if (__DEV__) return 'localhost'; // Simülatör (dev mode)
-  return '192.168.1.100'; // Fiziksel cihaz
+  return '89.252.152.168'; // Production sunucu
 };
 const DEFAULT_HOST = getDefaultHost();
-export const DEFAULT_API_BASE_URL = `http://${DEFAULT_HOST}:8000/api`;
+export const DEFAULT_API_BASE_URL = __DEV__ ? `http://${DEFAULT_HOST}:8000/api` : PRODUCTION_URL;
 
 // Mutable API_BASE_URL — sunucu seçimiyle değişebilir
 export let API_BASE_URL = DEFAULT_API_BASE_URL;
@@ -282,8 +283,6 @@ export interface ServerConfig {
 }
 
 export const SERVER_LIST: ServerConfig[] = [
+  { name: 'Grand Hotel (Sunucu)', url: 'http://89.252.152.168/api' },
   { name: 'Test Sunucu (Lokal)', url: `http://${DEFAULT_HOST}:8000/api` },
-  // Yeni oteller buraya eklenecek:
-  // { name: 'Grand Hotel İstanbul', url: 'https://istanbul.grandhotel.com/api' },
-  // { name: 'Grand Hotel Antalya', url: 'https://antalya.grandhotel.com/api' },
 ];
