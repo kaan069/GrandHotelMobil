@@ -253,16 +253,91 @@ const TableDetailScreen: React.FC<Props> = ({ table, onClose, onUpdate }) => {
         <View style={{ height: 100 }} />
       </ScrollView>
 
-      {/* Alt buton — Ödeme Al */}
+      {/* Alt butonlar — Hesap Böl + Ödeme Al */}
       {canPay && tab && items.length > 0 && (
         <View style={styles.bottomBar}>
           <TouchableOpacity
-            style={[styles.payBtn, { backgroundColor: colors.primary }]}
+            style={[styles.payBtn, { backgroundColor: '#64748b', flex: 0.4 }]}
+            onPress={() => { setSplitSelected([]); setSplitVisible(true); }}
+          >
+            <Ionicons name="git-branch-outline" size={18} color="#fff" />
+            <Text style={styles.payBtnText}>Böl</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.payBtn, { backgroundColor: colors.primary, flex: 0.6 }]}
             onPress={() => { setShowRoomSelect(false); setPaymentVisible(true); }}
           >
             <Ionicons name="card-outline" size={20} color="#fff" />
-            <Text style={styles.payBtnText}>Ödeme Al — {totalAmount.toFixed(2)} ₺</Text>
+            <Text style={styles.payBtnText}>Ödeme — {totalAmount.toFixed(0)} ₺</Text>
           </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Hesap Böl Modal */}
+      {splitVisible && (
+        <View style={styles.payOverlay}>
+          <View style={styles.payModal}>
+            <Text style={styles.payModalTitle}>Hesap Böl</Text>
+            <Text style={{ fontSize: 13, color: colors.textSecondary, marginBottom: 12 }}>
+              Ayrı ödenecek kalemleri seçin:
+            </Text>
+            <ScrollView style={{ maxHeight: 300 }}>
+              {items.map((item: Record<string, unknown>) => {
+                const id = item.id as number;
+                const checked = splitSelected.includes(id);
+                return (
+                  <TouchableOpacity
+                    key={id}
+                    onPress={() => toggleSplitItem(id)}
+                    style={{
+                      flexDirection: 'row', alignItems: 'center', gap: 10,
+                      padding: 10, marginBottom: 4, borderRadius: 8,
+                      backgroundColor: checked ? '#eff6ff' : '#f8fafc',
+                      borderWidth: checked ? 1 : 0, borderColor: '#3b82f6',
+                    }}
+                  >
+                    <Ionicons
+                      name={checked ? 'checkbox' : 'square-outline'}
+                      size={22}
+                      color={checked ? colors.primary : colors.textDisabled}
+                    />
+                    <Text style={{ flex: 1, fontSize: 14, fontWeight: '600', color: colors.textPrimary }}>
+                      {item.quantity as number}x {item.description as string}
+                    </Text>
+                    <Text style={{ fontSize: 14, fontWeight: '700', color: colors.textPrimary }}>
+                      {Number(item.totalPrice).toFixed(0)} ₺
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+            <View style={{ borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 12, marginTop: 12 }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 }}>
+                <Text style={{ fontWeight: '700', fontSize: 15 }}>Seçili Toplam:</Text>
+                <Text style={{ fontWeight: '700', fontSize: 15, color: colors.primary }}>
+                  {items
+                    .filter((i: Record<string, unknown>) => splitSelected.includes(i.id as number))
+                    .reduce((s: number, i: Record<string, unknown>) => s + Number(i.totalPrice), 0)
+                    .toFixed(0)} ₺
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.payMethodBtn, { backgroundColor: colors.primary, opacity: splitSelected.length === 0 || splitting ? 0.5 : 1 }]}
+                onPress={handleSplit}
+                disabled={splitSelected.length === 0 || splitting}
+              >
+                <Text style={styles.payMethodBtnText}>
+                  {splitting ? 'Ayrılıyor...' : `Seçilenleri Ayır (${splitSelected.length} kalem)`}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.payMethodBtn, { backgroundColor: '#94a3b8', marginTop: 8 }]}
+                onPress={() => setSplitVisible(false)}
+              >
+                <Text style={styles.payMethodBtnText}>Vazgeç</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
         </View>
       )}
 

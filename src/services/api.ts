@@ -761,6 +761,8 @@ export const tabsApi = {
     apiClient<ApiTab>(`/tabs/${tabId}/cancel/`, { method: 'POST' }),
   refund: (tabId: number, reason?: string) =>
     apiClient<ApiTab>(`/tabs/${tabId}/refund/`, { method: 'POST', body: JSON.stringify({ reason }) }),
+  split: (tabId: number, itemIds: number[], guestName?: string) =>
+    apiClient(`/tabs/${tabId}/split/`, { method: 'POST', body: JSON.stringify({ itemIds, guestName }) }),
 };
 
 /** Menü yönetimi */
