@@ -48,6 +48,31 @@ const TableDetailScreen: React.FC<Props> = ({ table, onClose, onUpdate }) => {
 
   /* Ödeme */
   const [paymentVisible, setPaymentVisible] = useState(false);
+
+  /* Hesap böl */
+  const [splitVisible, setSplitVisible] = useState(false);
+  const [splitSelected, setSplitSelected] = useState<number[]>([]);
+  const [splitting, setSplitting] = useState(false);
+
+  const toggleSplitItem = (id: number) => {
+    setSplitSelected(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  };
+
+  const handleSplit = async () => {
+    if (!tab || splitSelected.length === 0) return;
+    setSplitting(true);
+    try {
+      await tabsApi.split(tab.id, splitSelected);
+      setSplitVisible(false);
+      setSplitSelected([]);
+      fetchDetail();
+      Alert.alert('Başarılı', 'Hesap bölündü — yeni adisyon oluşturuldu');
+    } catch {
+      Alert.alert('Hata', 'Hesap bölme başarısız');
+    } finally {
+      setSplitting(false);
+    }
+  };
   const [showRoomSelect, setShowRoomSelect] = useState(false);
   const [checkedInRooms, setCheckedInRooms] = useState<Reservation[]>([]);
 
