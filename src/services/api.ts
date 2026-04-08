@@ -396,6 +396,16 @@ export interface ApiEmployee {
   status: string;
   roles: string[];
   roleLabels: string[];
+  salary?: number | string | null;
+  consecutiveWorkDays?: number;
+  totalWorkDays?: number;
+  weeklyLeaveEarned?: number;
+  weeklyLeaveUsed?: number;
+  weeklyLeaveRemaining?: number;
+  annualLeaveEntitlement?: number;
+  usedAnnualLeave?: number;
+  remainingAnnualLeave?: number;
+  isOnLeaveToday?: boolean;
   enabledModules?: string[];
   branchCode?: string;
   hotelId?: number;

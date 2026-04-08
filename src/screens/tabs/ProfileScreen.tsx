@@ -100,7 +100,12 @@ const ProfileScreen: React.FC = () => {
           </View>
           <Text style={styles.name}>{user.name}</Text>
           <View style={styles.roleBadge}>
-            <Text style={styles.roleText}>{ROLE_LABELS[user.role] || user.role}</Text>
+            <Text style={styles.roleText}>
+              {(user.roles && user.roles.length > 0
+                ? user.roles.map((r: string) => ROLE_LABELS[r] || r).join(', ')
+                : ROLE_LABELS[user.role] || user.role
+              )}
+            </Text>
           </View>
         </View>
 
@@ -110,7 +115,11 @@ const ProfileScreen: React.FC = () => {
           <View style={styles.divider} />
           <InfoRow icon="card-outline" label="Personel No" value={user.staffNumber} />
           <View style={styles.divider} />
-          <InfoRow icon="shield-checkmark-outline" label="Yetki" value={ROLE_LABELS[user.role]} />
+          <InfoRow icon="shield-checkmark-outline" label="Yetki" value={
+            user.roles && user.roles.length > 0
+              ? user.roles.map((r: string) => ROLE_LABELS[r] || r).join(', ')
+              : ROLE_LABELS[user.role] || user.role
+          } />
         </AppCard>
 
         {/* Mesailerim Butonu */}

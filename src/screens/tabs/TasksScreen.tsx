@@ -205,9 +205,20 @@ const TasksScreen: React.FC = () => {
   if (!user) return null;
 
   const enabledModules = user.enabledModules || ['base'];
-  const modules = (TASK_MODULES[user.role] || []).filter(
-    (mod) => enabledModules.includes(mod.module)
-  );
+
+  // Tüm rollerin modüllerini birleştir (duplikat engelle)
+  const allRoles = user.roles && user.roles.length > 0 ? user.roles : [user.role];
+  const mergedModules: typeof TASK_MODULES[keyof typeof TASK_MODULES] = [];
+  const seenIds = new Set<string>();
+  for (const role of allRoles) {
+    for (const mod of TASK_MODULES[role as keyof typeof TASK_MODULES] || []) {
+      if (!seenIds.has(mod.id)) {
+        seenIds.add(mod.id);
+        mergedModules.push(mod);
+      }
+    }
+  }
+  const modules = mergedModules.filter(mod => enabledModules.includes(mod.module));
 
   /** Modal içeriğini render et */
   const renderScreenContent = () => {
