@@ -140,6 +140,35 @@ export const roomsApi = {
       method: 'POST',
       body: JSON.stringify({ notes }),
     }),
+
+  /** Yeni oda ekle */
+  create: (data: { roomNumber: string; bedType: string; floor: number; capacity: number; view: string; price: number; beds?: { type: string }[] }) =>
+    apiClient<ApiRoom>('/rooms/', {
+      method: 'POST',
+      body: JSON.stringify({ ...data, status: 'available' }),
+    }),
+
+  /** Oda güncelle */
+  update: (id: number, data: Record<string, unknown>) =>
+    apiClient<ApiRoom>(`/rooms/${id}/`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+
+  /** Oda sil */
+  delete: (id: number) =>
+    apiClient(`/rooms/${id}/`, { method: 'DELETE' }),
+};
+
+/* ==================== HOTEL API ==================== */
+
+export const hotelApi = {
+  get: () => apiClient<Record<string, unknown>>('/hotel/'),
+  update: (data: Record<string, unknown>) =>
+    apiClient<Record<string, unknown>>('/hotel/', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
 };
 
 /* ==================== GUESTS API ==================== */
@@ -188,7 +217,7 @@ export const companiesApi = {
     apiClient<Company[]>('/companies/'),
 
   /** Yeni firma oluştur */
-  create: (data: { name: string; taxNumber?: string; address?: string; phone?: string; email?: string }) =>
+  create: (data: { name: string; taxNumber?: string; address?: string; phone?: string; email?: string; agreedRate?: number }) =>
     apiClient<Company>('/companies/', {
       method: 'POST',
       body: JSON.stringify(data),
@@ -360,8 +389,12 @@ export const kazancApi = {
     apiClient<any>('/kazanc/night-audit-preview/'),
 
   /** Gün sonu uygula — oda ücretlerini folio'ya yaz */
-  nightAuditExecute: () =>
-    apiClient<any>('/kazanc/night-audit/', { method: 'POST' }),
+  nightAuditExecute: (processedBy?: string) =>
+    apiClient<any>('/kazanc/night-audit/', { method: 'POST', body: JSON.stringify({ processedBy }) }),
+
+  /** No-show iptal */
+  cancelNoShow: (reservationId: number) =>
+    apiClient<any>(`/reservations/${reservationId}/cancel/`, { method: 'POST' }),
 
   /** Gelişmiş kazanç raporu (çoklu filtreleme) */
   advancedReport: (filters?: {

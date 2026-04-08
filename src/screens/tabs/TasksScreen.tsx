@@ -48,6 +48,9 @@ import CameraScreen from '../tasks/CameraScreen';
 import TablesScreen from '../tasks/TablesScreen';
 import KitchenScreen from '../tasks/KitchenScreen';
 import MinibarRoomsScreen from '../tasks/MinibarRoomsScreen';
+import HotelManagementScreen from '../tasks/HotelManagementScreen';
+import RoomSettingsScreen from '../tasks/RoomSettingsScreen';
+import NightAuditScreen from '../tasks/NightAuditScreen';
 
 interface TaskModule {
   id: string;
@@ -133,10 +136,13 @@ const TASK_MODULES: Record<string, TaskModule[]> = {
     { id: 'companies', label: 'Firma Yönetimi', icon: 'business-outline', color: '#1565C0', screen: 'Companies', module: 'base' },
     { id: 'reservations', label: 'Rezervasyon Geçmişi', icon: 'time-outline', color: '#7C3AED', screen: 'ReservationHistory', module: 'base' },
     { id: 'meal', label: 'Yemek Programı', icon: 'restaurant-outline', color: '#F59E0B', screen: 'MealProgram', module: 'restaurant' },
+    { id: 'night-audit', label: 'Gün Sonu', icon: 'moon-outline', color: '#1E293B', screen: 'NightAudit', module: 'base' },
     { id: 'fault-create', label: 'Arıza Bildir', icon: 'warning-outline', color: '#EF4444', screen: 'FaultCreate', module: 'staff' },
   ],
   [ROLES.MANAGER]: [
     { id: 'my-tasks', label: 'Görevlerim', icon: 'clipboard-outline', color: '#1565C0', screen: 'MyTasks', module: 'staff' },
+    { id: 'hotel-mgmt', label: 'Otel Yönetimi', icon: 'business-outline', color: '#7C3AED', screen: 'HotelManagement', module: 'base' },
+    { id: 'room-settings', label: 'Oda Yönetimi', icon: 'bed-outline', color: '#0891B2', screen: 'RoomSettings', module: 'base' },
     { id: 'tables', label: 'Masalar', icon: 'grid-outline', color: '#06B6D4', screen: 'Tables', module: 'restaurant' },
     { id: 'kitchen', label: 'Mutfak Ekranı', icon: 'flame-outline', color: '#EF4444', screen: 'Kitchen', module: 'restaurant' },
     { id: 'create-task', label: 'Görev Ata', icon: 'add-circle-outline', color: '#E91E63', screen: 'CreateTask', module: 'staff' },
@@ -152,10 +158,13 @@ const TASK_MODULES: Record<string, TaskModule[]> = {
     { id: 'minibar-rooms', label: 'Minibar Kontrol', icon: 'wine-outline', color: '#8B5CF6', screen: 'MinibarRooms', module: 'minibar' },
     { id: 'cameras', label: 'Kameralar', icon: 'videocam-outline', color: '#607D8B', screen: 'Cameras', module: 'cameras' },
     { id: 'reports', label: 'Raporlar', icon: 'bar-chart-outline', color: '#F97316', screen: 'Reports', module: 'base' },
+    { id: 'night-audit', label: 'Gün Sonu', icon: 'moon-outline', color: '#1E293B', screen: 'NightAudit', module: 'base' },
     { id: 'fault-create', label: 'Arıza Bildir', icon: 'warning-outline', color: '#EF4444', screen: 'FaultCreate', module: 'staff' },
   ],
   [ROLES.PATRON]: [
     { id: 'my-tasks', label: 'Görevlerim', icon: 'clipboard-outline', color: '#1565C0', screen: 'MyTasks', module: 'staff' },
+    { id: 'hotel-mgmt', label: 'Otel Yönetimi', icon: 'business-outline', color: '#7C3AED', screen: 'HotelManagement', module: 'base' },
+    { id: 'room-settings', label: 'Oda Yönetimi', icon: 'bed-outline', color: '#0891B2', screen: 'RoomSettings', module: 'base' },
     { id: 'tables', label: 'Masalar', icon: 'grid-outline', color: '#06B6D4', screen: 'Tables', module: 'restaurant' },
     { id: 'kitchen', label: 'Mutfak Ekranı', icon: 'flame-outline', color: '#EF4444', screen: 'Kitchen', module: 'restaurant' },
     { id: 'create-task', label: 'Görev Ata', icon: 'add-circle-outline', color: '#E91E63', screen: 'CreateTask', module: 'staff' },
@@ -172,6 +181,7 @@ const TASK_MODULES: Record<string, TaskModule[]> = {
     { id: 'staff', label: 'Personel Yönetimi', icon: 'people-outline', color: '#1565C0', screen: 'Staff', module: 'staff' },
     { id: 'cameras', label: 'Kameralar', icon: 'videocam-outline', color: '#607D8B', screen: 'Cameras', module: 'cameras' },
     { id: 'reports', label: 'Raporlar', icon: 'bar-chart-outline', color: '#F97316', screen: 'Reports', module: 'base' },
+    { id: 'night-audit', label: 'Gün Sonu', icon: 'moon-outline', color: '#1E293B', screen: 'NightAudit', module: 'base' },
     { id: 'fault-create', label: 'Arıza Bildir', icon: 'warning-outline', color: '#EF4444', screen: 'FaultCreate', module: 'staff' },
   ],
 };
@@ -196,6 +206,9 @@ const SCREEN_MAP: Record<string, React.ComponentType<{ onClose: () => void }>> =
   Tables: TablesScreen,
   Kitchen: KitchenScreen,
   MinibarRooms: MinibarRoomsScreen,
+  HotelManagement: HotelManagementScreen,
+  RoomSettings: RoomSettingsScreen,
+  NightAudit: NightAuditScreen,
 };
 
 const TasksScreen: React.FC = () => {

@@ -18,7 +18,7 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { AppInput, AppButton } from '../common';
 import { colors, spacing, fontSize, borderRadius } from '../../theme';
-import { FOLIO_CATEGORIES, PAYMENT_METHODS } from '../../utils/constants';
+import { FOLIO_CATEGORIES, PAYMENT_METHOD_LABELS } from '../../utils/constants';
 import type { FolioCategory } from '../../utils/types';
 
 interface FolioAddModalProps {
@@ -120,25 +120,25 @@ const FolioAddModal: React.FC<FolioAddModalProps> = ({ visible, onClose, onSave 
                 <Text style={styles.label}>Ödeme Yöntemi</Text>
                 {errors.paymentMethod ? <Text style={styles.errorText}>{errors.paymentMethod}</Text> : null}
                 <View style={styles.chipGrid}>
-                  {PAYMENT_METHODS.map((pm) => (
+                  {Object.entries(PAYMENT_METHOD_LABELS).map(([value, label]) => (
                     <TouchableOpacity
-                      key={pm.value}
+                      key={value}
                       style={[
                         styles.chip,
-                        paymentMethod === pm.value && styles.chipActivePayment,
+                        paymentMethod === value && styles.chipActivePayment,
                       ]}
                       onPress={() => {
-                        setPaymentMethod(pm.value);
+                        setPaymentMethod(value);
                         if (errors.paymentMethod) setErrors((p) => ({ ...p, paymentMethod: '' }));
                       }}
                     >
                       <Text
                         style={[
                           styles.chipText,
-                          paymentMethod === pm.value && styles.chipTextActivePayment,
+                          paymentMethod === value && styles.chipTextActivePayment,
                         ]}
                       >
-                        {pm.label}
+                        {label}
                       </Text>
                     </TouchableOpacity>
                   ))}

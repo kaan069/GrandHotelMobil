@@ -172,6 +172,7 @@ export interface Company {
   address: string | null;
   phone: string | null;
   email: string | null;
+  agreedRate?: string | number | null;
 }
 
 /* ==================== RESTORAN / CAFE ==================== */

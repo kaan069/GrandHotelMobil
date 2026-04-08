@@ -32,8 +32,8 @@ import {
   FOLIO_CATEGORY_LABELS,
 } from '../../utils/constants';
 import useAuth from '../../hooks/useAuth';
-import { roomsApi, foliosApi, reservationsApi } from '../../services/api';
-import type { RoomGuest, ApiFolioItem, Guest, FolioCategory } from '../../utils/types';
+import { roomsApi, foliosApi, reservationsApi, companiesApi } from '../../services/api';
+import type { RoomGuest, ApiFolioItem, Guest, FolioCategory, Company } from '../../utils/types';
 
 import NewGuestModal from './NewGuestModal';
 import GuestSearchModal from './GuestSearchModal';
@@ -82,6 +82,25 @@ const RoomSellView: React.FC<RoomSellViewProps> = ({ room, onClose, onRoomUpdate
   const [folios, setFolios] = useState<ApiFolioItem[]>([]);
   const [notes, setNotes] = useState(room.reservationNotes || '');
   const [loading, setLoading] = useState(false);
+
+  /* Firma & Fiyat */
+  const [companies, setCompanies] = useState<Company[]>([]);
+  const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(null);
+  const [nightlyRate, setNightlyRate] = useState<string>(room.price ? String(room.price) : '');
+
+  useEffect(() => {
+    companiesApi.getAll().then(setCompanies).catch(() => {});
+  }, []);
+
+  const handleCompanyChange = (compId: number | null) => {
+    setSelectedCompanyId(compId);
+    if (compId) {
+      const comp = companies.find(c => c.id === compId);
+      if (comp?.agreedRate) {
+        setNightlyRate(String(comp.agreedRate));
+      }
+    }
+  };
 
   /* Modal state */
   const [showNewGuest, setShowNewGuest] = useState(false);
@@ -385,6 +404,69 @@ const RoomSellView: React.FC<RoomSellViewProps> = ({ room, onClose, onRoomUpdate
           </View>
         </AppCard>
 
+        {/* Firma & Gecelik Ücret */}
+        <AppCard style={styles.card}>
+          <View style={styles.sectionHeader}>
+            <Ionicons name="business" size={20} color={colors.primary} />
+            <Text style={styles.sectionTitle}>Konaklama Bilgileri</Text>
+          </View>
+
+          {/* Firma seçimi — açılır menü */}
+          <Text style={{ fontSize: 13, fontWeight: '600', color: colors.textSecondary, marginBottom: 4 }}>Firma</Text>
+          <TouchableOpacity
+            style={{
+              flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+              backgroundColor: '#f8fafc', borderWidth: 1, borderColor: colors.border,
+              borderRadius: borderRadius.md, padding: 12, marginBottom: 12,
+            }}
+            onPress={() => {
+              const options = [
+                { text: 'Bireysel (Firma Yok)', onPress: () => handleCompanyChange(null) },
+                ...companies.map(c => ({
+                  text: `${c.name}${c.agreedRate ? ` — ${Number(c.agreedRate).toLocaleString('tr-TR')} ₺/gece` : ''}`,
+                  onPress: () => handleCompanyChange(c.id),
+                })),
+              ];
+              Alert.alert('Firma Seçin', undefined, [
+                ...options.map(o => ({ text: o.text, onPress: o.onPress })),
+                { text: 'İptal', style: 'cancel' as const },
+              ]);
+            }}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+              <Ionicons name="business-outline" size={18} color={colors.textSecondary} />
+              <Text style={{ fontSize: 14, color: selectedCompanyId ? colors.textPrimary : colors.textDisabled, fontWeight: selectedCompanyId ? '600' : '400' }}>
+                {selectedCompanyId
+                  ? companies.find(c => c.id === selectedCompanyId)?.name || 'Firma'
+                  : 'Firma Seçin (Opsiyonel)'}
+              </Text>
+            </View>
+            <Ionicons name="chevron-down" size={18} color={colors.textSecondary} />
+          </TouchableOpacity>
+
+          {/* Seçili firma bilgisi */}
+          {selectedCompanyId && (() => {
+            const comp = companies.find(c => c.id === selectedCompanyId);
+            return comp?.agreedRate ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8, marginTop: -4 }}>
+                <Ionicons name="checkmark-circle" size={16} color="#22c55e" />
+                <Text style={{ fontSize: 12, color: '#22c55e', fontWeight: '600' }}>
+                  Anlaşmalı fiyat: {Number(comp.agreedRate).toLocaleString('tr-TR')} ₺/gece
+                </Text>
+              </View>
+            ) : null;
+          })()}
+
+          {/* Gecelik ücret */}
+          <AppInput
+            label="Gecelik Ücret (₺)"
+            value={nightlyRate}
+            onChangeText={setNightlyRate}
+            keyboardType="numeric"
+            icon="cash-outline"
+          />
+        </AppCard>
+
         {/* Misafir Yönetimi */}
         {(isAvailable || isOccupied) && (
           <AppCard style={styles.card}>
@@ -464,8 +546,8 @@ const RoomSellView: React.FC<RoomSellViewProps> = ({ room, onClose, onRoomUpdate
           </AppCard>
         )}
 
-        {/* Folio Özeti — sadece dolu oda (reservation var) */}
-        {isOccupied && (
+        {/* Folio Özeti — dolu oda veya rezervasyon varsa */}
+        {(isOccupied || room.reservationId) && (
           <AppCard style={styles.card}>
             <View style={styles.sectionHeader}>
               <Ionicons name="receipt" size={20} color={colors.primary} />
