@@ -2,8 +2,10 @@
  * AuthContext - Kimlik Doğrulama Bağlamı
  *
  * Kullanıcı oturum bilgisini uygulama genelinde sağlar.
+ * JWT token'lar AsyncStorage'da saklanır, her API isteğinde gönderilir.
+ *
  * Giriş: şube kodu + personel numarası + şifre
- * Backend API: POST /api/staff/login/
+ * Backend API: POST /api/staff/login/ → access + refresh JWT token döner
  */
 
 import React, { createContext, useState, useCallback, ReactNode } from 'react';
@@ -37,6 +39,8 @@ export const AuthContext = createContext<AuthContextType | null>(null);
 
 const STORAGE_KEY = 'grandhotel_mobile_user';
 const HOTEL_ID_KEY = 'grandhotel_mobile_hotel_id';
+const TOKEN_KEY = 'grandhotel_mobile_token';
+const REFRESH_TOKEN_KEY = 'grandhotel_mobile_refresh_token';
 
 interface AuthProviderProps {
   children: ReactNode;
@@ -46,7 +50,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(false);
 
-  /** Backend API ile giriş yap */
+  /** Backend API ile giriş yap — JWT token al ve sakla */
   const login = useCallback(async (branchCode: string, staffNumber: string, password: string): Promise<User> => {
     setLoading(true);
     try {
@@ -70,9 +74,18 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       };
 
       setUser(userData);
+
+      // JWT token'ları + kullanıcı bilgilerini sakla
+      const accessToken = (employee as any).access || '';
+      const refreshToken = (employee as any).refresh || '';
+
       try {
-        await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(userData));
-        await AsyncStorage.setItem(HOTEL_ID_KEY, String(userData.hotelId));
+        await AsyncStorage.multiSet([
+          [STORAGE_KEY, JSON.stringify(userData)],
+          [HOTEL_ID_KEY, String(userData.hotelId)],
+          [TOKEN_KEY, accessToken],
+          [REFRESH_TOKEN_KEY, refreshToken],
+        ]);
       } catch {
         /* Storage kullanılamıyorsa oturum sadece bellekte tutulur */
       }
@@ -82,18 +95,17 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     }
   }, []);
 
-  /** Çıkış yap */
+  /** Çıkış yap — token'ları ve kullanıcı bilgilerini temizle */
   const logout = useCallback(async (): Promise<void> => {
     setUser(null);
     try {
-      await AsyncStorage.removeItem(STORAGE_KEY);
-      await AsyncStorage.removeItem(HOTEL_ID_KEY);
+      await AsyncStorage.multiRemove([STORAGE_KEY, HOTEL_ID_KEY, TOKEN_KEY, REFRESH_TOKEN_KEY]);
     } catch {
       /* Storage kullanılamıyorsa sessizce geç */
     }
   }, []);
 
-  /** Kaydedilmiş oturumu yükle */
+  /** Kaydedilmiş oturumu yükle (uygulama açılışında) */
   const loadSession = useCallback(async (): Promise<void> => {
     setLoading(true);
     try {

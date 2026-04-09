@@ -55,10 +55,16 @@ import type { Fault } from '../components/tasks/FaultDetailView';
 async function apiClient<T>(endpoint: string, options?: RequestInit): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`;
 
-  /* AsyncStorage'dan hotel ID al (varsa header'a ekle) */
+  /* AsyncStorage'dan hotel ID ve JWT token al */
   let hotelId: string | null = null;
+  let token: string | null = null;
   try {
-    hotelId = await AsyncStorage.getItem('grandhotel_mobile_hotel_id');
+    const keys = await AsyncStorage.multiGet([
+      'grandhotel_mobile_hotel_id',
+      'grandhotel_mobile_token',
+    ]);
+    hotelId = keys[0][1];
+    token = keys[1][1];
   } catch {
     /* Storage kullanılamıyorsa sessizce geç */
   }
@@ -66,6 +72,7 @@ async function apiClient<T>(endpoint: string, options?: RequestInit): Promise<T>
   const response = await fetch(url, {
     headers: {
       'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
       ...(hotelId ? { 'X-Hotel-Id': hotelId } : {}),
       ...(options?.headers || {}),
     },
@@ -75,6 +82,16 @@ async function apiClient<T>(endpoint: string, options?: RequestInit): Promise<T>
   // HTTP 204 No Content (DELETE işlemlerinde döner)
   if (response.status === 204) {
     return undefined as T;
+  }
+
+  // 401 → Token refresh dene (login endpoint'i hariç)
+  if (response.status === 401 && !endpoint.includes('/staff/login')) {
+    const refreshed = await _tryRefreshToken();
+    if (refreshed) {
+      // Yeni token ile tekrar dene
+      return apiClient<T>(endpoint, options);
+    }
+    // Refresh başarısız → logout (AuthContext'e bırak)
   }
 
   // Hata durumunda backend'in döndüğü error mesajını al
@@ -97,6 +114,31 @@ async function apiClient<T>(endpoint: string, options?: RequestInit): Promise<T>
   }
 
   return response.json();
+}
+
+/** Token refresh — 401 alındığında çağrılır */
+async function _tryRefreshToken(): Promise<boolean> {
+  try {
+    const refreshToken = await AsyncStorage.getItem('grandhotel_mobile_refresh_token');
+    if (!refreshToken) return false;
+
+    const response = await fetch(`${API_BASE_URL}/staff/token/refresh/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh: refreshToken }),
+    });
+
+    if (!response.ok) return false;
+
+    const data = await response.json();
+    await AsyncStorage.multiSet([
+      ['grandhotel_mobile_token', data.access],
+      ['grandhotel_mobile_refresh_token', data.refresh],
+    ]);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /* ==================== ROOMS API ==================== */
