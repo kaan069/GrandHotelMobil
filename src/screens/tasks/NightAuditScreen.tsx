@@ -33,7 +33,7 @@ interface Props {
 interface OccupiedRoom {
   roomNumber: string;
   guestName: string;
-  nightlyRate: number;
+  price: number;
   nights: number;
 }
 
@@ -57,6 +57,7 @@ const NightAuditScreen: React.FC<Props> = ({ onClose }) => {
   const [noShowRooms, setNoShowRooms] = useState<NoShowRoom[]>([]);
   const [totalCharge, setTotalCharge] = useState(0);
   const [noShowStatus, setNoShowStatus] = useState<Record<number, string>>({});
+  const [alreadyProcessed, setAlreadyProcessed] = useState(false);
 
   // Sonuç
   const [result, setResult] = useState<{ processedRooms: number; totalCharged: number; noShowCount: number } | null>(null);
@@ -72,11 +73,35 @@ const NightAuditScreen: React.FC<Props> = ({ onClose }) => {
       setOccupiedRooms(data.occupiedRooms || []);
       setNoShowRooms(data.noShowRooms || []);
       setTotalCharge(data.totalCharge || 0);
+      setAlreadyProcessed(data.alreadyProcessed || false);
     } catch {
       Alert.alert('Hata', 'Gün sonu verileri yüklenemedi');
     } finally {
       setLoading(false);
     }
+  };
+
+  // Tüm no-show'ları toplu iptal
+  const handleCancelAllNoShows = async () => {
+    const pending = noShowRooms.filter(r => noShowStatus[r.reservationId] !== 'cancelled');
+    if (pending.length === 0) return;
+    Alert.alert('Toplu İptal', `${pending.length} rezervasyonu iptal etmek istediğinize emin misiniz?`, [
+      { text: 'Vazgeç', style: 'cancel' },
+      {
+        text: 'Tümünü İptal Et', style: 'destructive',
+        onPress: async () => {
+          for (const room of pending) {
+            setNoShowStatus(prev => ({ ...prev, [room.reservationId]: 'cancelling' }));
+            try {
+              await kazancApi.cancelNoShow(room.reservationId);
+              setNoShowStatus(prev => ({ ...prev, [room.reservationId]: 'cancelled' }));
+            } catch {
+              setNoShowStatus(prev => ({ ...prev, [room.reservationId]: 'error' }));
+            }
+          }
+        },
+      },
+    ]);
   };
 
   const handleCancelNoShow = async (room: NoShowRoom) => {
@@ -90,6 +115,10 @@ const NightAuditScreen: React.FC<Props> = ({ onClose }) => {
   };
 
   const handleExecute = () => {
+    if (alreadyProcessed) {
+      Alert.alert('Uyarı', 'Bugün için gün sonu işlemi zaten yapılmış. Tekrar çalıştırmak ücretleri mükerrer yansıtır.');
+      return;
+    }
     Alert.alert(
       'Gün Sonu Uygula',
       `${occupiedRooms.length} odaya toplam ${fmt(totalCharge)} ₺ gecelik ücret yansıtılacak.\n\nDevam edilsin mi?`,
@@ -119,7 +148,7 @@ const NightAuditScreen: React.FC<Props> = ({ onClose }) => {
     );
   };
 
-  const fmt = (n: number) => n.toLocaleString('tr-TR', { minimumFractionDigits: 0 });
+  const fmt = (n: number | undefined | null) => (n ?? 0).toLocaleString('tr-TR', { minimumFractionDigits: 0 });
   const today = new Date().toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' });
 
   // Sonuç ekranı
@@ -162,6 +191,16 @@ const NightAuditScreen: React.FC<Props> = ({ onClose }) => {
             <Text style={styles.dateText}>{today}</Text>
           </View>
 
+          {/* Zaten işlenmiş uyarısı */}
+          {alreadyProcessed && (
+            <View style={{ backgroundColor: '#fef3c7', padding: 12, borderRadius: 8, marginBottom: 12, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Ionicons name="warning" size={20} color="#f59e0b" />
+              <Text style={{ color: '#92400e', fontSize: 13, fontWeight: '600', flex: 1 }}>
+                Bugün için gün sonu işlemi zaten yapılmış.
+              </Text>
+            </View>
+          )}
+
           {/* Konaklayan odalar */}
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
@@ -172,7 +211,7 @@ const NightAuditScreen: React.FC<Props> = ({ onClose }) => {
               <View key={i} style={styles.roomRow}>
                 <Text style={styles.roomNum}>Oda {room.roomNumber}</Text>
                 <Text style={styles.roomGuest} numberOfLines={1}>{room.guestName || '-'}</Text>
-                <Text style={styles.roomRate}>{fmt(room.nightlyRate)} ₺</Text>
+                <Text style={styles.roomRate}>{fmt(room.price)} ₺</Text>
               </View>
             ))}
             <View style={styles.totalRow}>
@@ -184,9 +223,16 @@ const NightAuditScreen: React.FC<Props> = ({ onClose }) => {
           {/* No-show */}
           {noShowRooms.length > 0 && (
             <View style={styles.section}>
-              <View style={styles.sectionHeader}>
-                <Ionicons name="alert-circle-outline" size={20} color="#f59e0b" />
-                <Text style={styles.sectionTitle}>Gelmeyen Misafirler ({noShowRooms.length})</Text>
+              <View style={[styles.sectionHeader, { justifyContent: 'space-between' }]}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Ionicons name="alert-circle-outline" size={20} color="#f59e0b" />
+                  <Text style={styles.sectionTitle}>Gelmeyen Misafirler ({noShowRooms.length})</Text>
+                </View>
+                {noShowRooms.filter(r => noShowStatus[r.reservationId] !== 'cancelled').length > 1 && (
+                  <TouchableOpacity onPress={handleCancelAllNoShows} style={{ backgroundColor: '#ef4444', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 }}>
+                    <Text style={{ color: '#fff', fontSize: 11, fontWeight: '700' }}>Tümünü İptal</Text>
+                  </TouchableOpacity>
+                )}
               </View>
               {noShowRooms.map((room, i) => {
                 const status = noShowStatus[room.reservationId];

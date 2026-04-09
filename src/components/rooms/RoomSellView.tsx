@@ -317,9 +317,9 @@ const RoomSellView: React.FC<RoomSellViewProps> = ({ room, onClose, onRoomUpdate
   };
 
   /* ─── Check-out ─── */
-  const handleCheckOut = () => {
+  const handleCheckOut = (force = false) => {
     const message = folioBalance > 0
-      ? `Oda ${room.number} için check-out yapılsın mı?\n\n⚠️ Bakiye: ${formatCurrency(folioBalance)}`
+      ? `Oda ${room.number} için check-out yapılsın mı?\n\n⚠️ Ödenmemiş bakiye: ${formatCurrency(folioBalance)}`
       : `Oda ${room.number} için check-out yapılsın mı?`;
 
     Alert.alert('Check-out', message, [
@@ -330,10 +330,27 @@ const RoomSellView: React.FC<RoomSellViewProps> = ({ room, onClose, onRoomUpdate
         onPress: async () => {
           setLoading(true);
           try {
-            await roomsApi.checkOut(room.id);
+            await roomsApi.checkOut(room.id, force ? { force: true } : undefined);
             onRoomUpdate();
-          } catch (err: any) {
-            Alert.alert('Hata', err.message);
+          } catch (err: unknown) {
+            const error = err as { message?: string; balance?: number; requireForce?: boolean };
+            if (error.requireForce) {
+              // Bakiye var — zorla çıkış seçeneği sun
+              Alert.alert(
+                'Ödenmemiş Bakiye',
+                `${error.message}\n\nYine de çıkış yapmak istiyor musunuz?`,
+                [
+                  { text: 'Hayır, Ödeme Al', style: 'cancel' },
+                  {
+                    text: 'Evet, Çıkış Yap',
+                    style: 'destructive',
+                    onPress: () => handleCheckOut(true),
+                  },
+                ]
+              );
+            } else {
+              Alert.alert('Hata', (err as Error).message || 'Checkout hatası');
+            }
           } finally {
             setLoading(false);
           }

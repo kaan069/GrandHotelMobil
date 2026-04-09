@@ -84,12 +84,16 @@ async function apiClient<T>(endpoint: string, options?: RequestInit): Promise<T>
     // Django REST Framework field-level errors: { "field": ["msg"] }
     if (!errorData.error && typeof errorData === 'object') {
       const fieldErrors = Object.entries(errorData)
+        .filter(([key]) => key !== 'requireForce' && key !== 'balance')
         .map(([key, val]) => `${key}: ${Array.isArray(val) ? val.join(', ') : val}`)
         .join('\n');
       if (fieldErrors) throw new Error(fieldErrors);
     }
 
-    throw new Error(errorData.error || `API Hatası: ${response.status}`);
+    const err: any = new Error(errorData.error || `API Hatası: ${response.status}`);
+    if (errorData.requireForce) err.requireForce = true;
+    if (errorData.balance) err.balance = errorData.balance;
+    throw err;
   }
 
   return response.json();
@@ -114,7 +118,7 @@ export const roomsApi = {
     }),
 
   /** Check-out: Misafir çıkışı (tüm veya tek misafir) */
-  checkOut: (roomId: number, body?: { guestId?: number }) =>
+  checkOut: (roomId: number, body?: { guestId?: number; force?: boolean }) =>
     apiClient<ApiRoom>(`/rooms/${roomId}/check_out/`, {
       method: 'POST',
       body: JSON.stringify(body || {}),
