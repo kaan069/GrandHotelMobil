@@ -9,7 +9,7 @@
  *   - İşe giriş tarihi
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -23,6 +23,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { AppButton, AppInput, AppCard } from '../../components/common';
 import { colors, spacing, fontSize, borderRadius } from '../../theme';
 import { ROLES, ROLE_LABELS } from '../../utils/constants';
+import type { ApiEmployee } from '../../services/api';
 
 interface EmployeeData {
   firstName: string;
@@ -35,11 +36,13 @@ interface EmployeeData {
   hireDate: string;
   status: string;
   usedLeave: number;
+  salary?: number;
 }
 
 interface EmployeeAddModalProps {
   onClose: () => void;
   onSave: (data: EmployeeData) => void;
+  editingEmployee?: ApiEmployee | null;
 }
 
 /** 4 haneli rastgele şifre üret */
@@ -51,14 +54,53 @@ const SELECTABLE_ROLES: [string, string][] = Object.entries(ROLE_LABELS).filter(
   ([key]) => key !== ROLES.PATRON
 ) as [string, string][];
 
-const EmployeeAddModal: React.FC<EmployeeAddModalProps> = ({ onClose, onSave }) => {
+const EmployeeAddModal: React.FC<EmployeeAddModalProps> = ({ onClose, onSave, editingEmployee }) => {
+  const isEdit = !!editingEmployee;
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState(generatePassword());
   const [hireDate, setHireDate] = useState(new Date().toISOString().split('T')[0]);
+  const [salary, setSalary] = useState<number | undefined>(undefined);
+  const [salaryDisplay, setSalaryDisplay] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  // Edit modunda formu doldur
+  useEffect(() => {
+    if (editingEmployee) {
+      // fullName'i ad/soyada böl (en azından son boşluğa göre)
+      const parts = (editingEmployee.fullName || '').trim().split(' ');
+      const last = parts.length > 1 ? parts.pop() || '' : '';
+      const first = parts.join(' ');
+      setFirstName(first);
+      setLastName(last);
+      setSelectedRoles(editingEmployee.roles || []);
+      setPhone(editingEmployee.phone || '');
+      setHireDate(editingEmployee.hireDate || new Date().toISOString().split('T')[0]);
+      const sal = editingEmployee.salary != null ? Number(editingEmployee.salary) : undefined;
+      setSalary(sal);
+      setSalaryDisplay(sal ? sal.toLocaleString('tr-TR', {
+        minimumFractionDigits: 2, maximumFractionDigits: 2,
+      }) : '');
+    }
+  }, [editingEmployee]);
+
+  const handleSalaryChange = (text: string) => {
+    const cleaned = text.replace(/[^\d,.]/g, '');
+    setSalaryDisplay(cleaned);
+    const normalized = cleaned.replace(/\./g, '').replace(',', '.');
+    const numeric = parseFloat(normalized);
+    setSalary(isNaN(numeric) ? undefined : numeric);
+  };
+
+  const handleSalaryBlur = () => {
+    if (salary != null && !isNaN(salary)) {
+      setSalaryDisplay(salary.toLocaleString('tr-TR', {
+        minimumFractionDigits: 2, maximumFractionDigits: 2,
+      }));
+    }
+  };
 
   /** Rol seçimi toggle */
   const toggleRole = (role: string) => {
@@ -75,7 +117,7 @@ const EmployeeAddModal: React.FC<EmployeeAddModalProps> = ({ onClose, onSave }) 
     if (!lastName.trim()) newErrors.lastName = 'Soyad zorunlu';
     if (selectedRoles.length === 0) newErrors.roles = 'En az bir görev seçin';
     if (!phone.trim()) newErrors.phone = 'Telefon zorunlu';
-    if (!password || password.length !== 4) newErrors.password = '4 haneli şifre zorunlu';
+    if (!isEdit && (!password || password.length !== 4)) newErrors.password = '4 haneli şifre zorunlu';
     if (!hireDate) newErrors.hireDate = 'İşe giriş tarihi zorunlu';
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -96,15 +138,20 @@ const EmployeeAddModal: React.FC<EmployeeAddModalProps> = ({ onClose, onSave }) 
       hireDate,
       status: 'active',
       usedLeave: 0,
+      salary,
     };
 
     onSave(employeeData);
 
-    Alert.alert(
-      'Başarılı',
-      `${employeeData.name} eklendi.\nPersonel Şifresi: ${password}`,
-      [{ text: 'Tamam', onPress: onClose }]
-    );
+    if (isEdit) {
+      onClose();
+    } else {
+      Alert.alert(
+        'Başarılı',
+        `${employeeData.name} eklendi.\nPersonel Şifresi: ${password}`,
+        [{ text: 'Tamam', onPress: onClose }]
+      );
+    }
   };
 
   return (
@@ -114,7 +161,7 @@ const EmployeeAddModal: React.FC<EmployeeAddModalProps> = ({ onClose, onSave }) 
         <TouchableOpacity onPress={onClose}>
           <Ionicons name="close" size={28} color={colors.textPrimary} />
         </TouchableOpacity>
-        <Text style={styles.title}>Yeni Eleman Ekle</Text>
+        <Text style={styles.title}>{isEdit ? 'Eleman Düzenle' : 'Yeni Eleman Ekle'}</Text>
         <View style={{ width: 28 }} />
       </View>
 
@@ -182,21 +229,25 @@ const EmployeeAddModal: React.FC<EmployeeAddModalProps> = ({ onClose, onSave }) 
           error={errors.phone}
         />
 
-        {/* Şifre (4 haneli) */}
-        <Text style={styles.label}>Şifre (4 Haneli)</Text>
-        <View style={styles.passwordRow}>
-          <View style={styles.passwordBox}>
-            <Text style={styles.passwordText}>{password}</Text>
-          </View>
-          <TouchableOpacity
-            style={styles.refreshBtn}
-            onPress={() => setPassword(generatePassword())}
-          >
-            <Ionicons name="refresh" size={20} color={colors.primary} />
-            <Text style={styles.refreshText}>Yenile</Text>
-          </TouchableOpacity>
-        </View>
-        {errors.password && <Text style={styles.errorText}>{errors.password}</Text>}
+        {/* Şifre (4 haneli) — sadece yeni ekleme modunda */}
+        {!isEdit && (
+          <>
+            <Text style={styles.label}>Şifre (4 Haneli)</Text>
+            <View style={styles.passwordRow}>
+              <View style={styles.passwordBox}>
+                <Text style={styles.passwordText}>{password}</Text>
+              </View>
+              <TouchableOpacity
+                style={styles.refreshBtn}
+                onPress={() => setPassword(generatePassword())}
+              >
+                <Ionicons name="refresh" size={20} color={colors.primary} />
+                <Text style={styles.refreshText}>Yenile</Text>
+              </TouchableOpacity>
+            </View>
+            {errors.password && <Text style={styles.errorText}>{errors.password}</Text>}
+          </>
+        )}
 
         {/* İşe Giriş Tarihi */}
         <AppInput
@@ -211,11 +262,22 @@ const EmployeeAddModal: React.FC<EmployeeAddModalProps> = ({ onClose, onSave }) 
           error={errors.hireDate}
         />
 
+        {/* Aylık Maaş */}
+        <AppInput
+          label="Aylık Maaş (₺)"
+          value={salaryDisplay}
+          onChangeText={handleSalaryChange}
+          onBlur={handleSalaryBlur}
+          placeholder="Örn: 28.104,75"
+          icon="wallet-outline"
+          keyboardType="decimal-pad"
+        />
+
         {/* Kaydet */}
         <AppButton
-          title="Eleman Ekle"
+          title={isEdit ? 'Değişiklikleri Kaydet' : 'Eleman Ekle'}
           onPress={handleSubmit}
-          icon="person-add-outline"
+          icon={isEdit ? 'save-outline' : 'person-add-outline'}
           style={styles.submitButton}
         />
       </ScrollView>

@@ -39,6 +39,18 @@ const StaffScreen: React.FC<StaffScreenProps> = ({ onClose }) => {
   const { user } = useAuth();
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [editingEmployee, setEditingEmployee] = useState<ApiEmployee | null>(null);
+
+  /** Maaşı Türk locale'inde biçimle */
+  const fmtSalary = (val: number | string | null | undefined) => {
+    if (val == null || val === '') return null;
+    const n = Number(val);
+    if (isNaN(n) || n === 0) return null;
+    return n.toLocaleString('tr-TR', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+  };
 
   /** Backend'den personel listesini çek */
   const fetchStaff = useCallback(async () => {
@@ -74,11 +86,31 @@ const StaffScreen: React.FC<StaffScreenProps> = ({ onClose }) => {
         staffNumber: String(maxNum + 1),
         hireDate: employeeData.hireDate,
         roles: employeeData.roles || [],
+        salary: employeeData.salary,
       });
       setShowAddModal(false);
       fetchStaff();
     } catch (err: any) {
       Alert.alert('Hata', 'Eleman eklenemedi');
+    }
+  };
+
+  /** Eleman güncelle (API) */
+  const handleUpdateEmployee = async (employeeData: any) => {
+    if (!editingEmployee) return;
+    try {
+      await staffApi.update(editingEmployee.id, {
+        firstName: employeeData.firstName,
+        lastName: employeeData.lastName,
+        phone: employeeData.phone || '',
+        hireDate: employeeData.hireDate,
+        roles: employeeData.roles || [],
+        salary: employeeData.salary,
+      });
+      setEditingEmployee(null);
+      fetchStaff();
+    } catch (err: any) {
+      Alert.alert('Hata', 'Eleman güncellenemedi');
     }
   };
 
@@ -297,9 +329,11 @@ const StaffScreen: React.FC<StaffScreenProps> = ({ onClose }) => {
                       </>
                     ) : null}
 
-                    {/* Şifre */}
-                    <Text style={styles.detailTitle}>Şifre</Text>
-                    <Text style={styles.detailText}>{item.password}</Text>
+                    {/* Aylık Maaş */}
+                    <Text style={styles.detailTitle}>Aylık Maaş</Text>
+                    <Text style={[styles.detailText, { fontWeight: '700' }]}>
+                      {fmtSalary(item.salary) ? `${fmtSalary(item.salary)} ₺` : 'Belirlenmemiş'}
+                    </Text>
 
                     {/* Yıllık İzin */}
                     <Text style={styles.detailTitle}>Yıllık İzin</Text>
@@ -335,6 +369,14 @@ const StaffScreen: React.FC<StaffScreenProps> = ({ onClose }) => {
                       </TouchableOpacity>
 
                       <TouchableOpacity
+                        style={styles.editBtn}
+                        onPress={() => setEditingEmployee(item)}
+                      >
+                        <Ionicons name="create-outline" size={16} color="#fff" />
+                        <Text style={styles.leaveBtnText}>Düzenle</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
                         style={styles.deleteBtn}
                         onPress={() => handleDelete(item.id, item.fullName)}
                       >
@@ -356,6 +398,18 @@ const StaffScreen: React.FC<StaffScreenProps> = ({ onClose }) => {
           onClose={() => setShowAddModal(false)}
           onSave={handleAddEmployee}
         />
+      </Modal>
+
+      {/* Eleman Düzenleme Modalı */}
+      <Modal visible={!!editingEmployee} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setEditingEmployee(null)}>
+        {editingEmployee && (
+          <EmployeeAddModal
+            key={`edit-${editingEmployee.id}`}
+            onClose={() => setEditingEmployee(null)}
+            onSave={handleUpdateEmployee}
+            editingEmployee={editingEmployee}
+          />
+        )}
       </Modal>
     </View>
   );
@@ -401,6 +455,11 @@ const styles = StyleSheet.create({
   leaveBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
     backgroundColor: colors.success, paddingHorizontal: 14, paddingVertical: 8,
+    borderRadius: borderRadius.md,
+  },
+  editBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: colors.primary, paddingHorizontal: 14, paddingVertical: 8,
     borderRadius: borderRadius.md,
   },
   leaveBtnText: { fontSize: fontSize.sm, color: '#fff', fontWeight: '600' },

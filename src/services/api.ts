@@ -532,9 +532,15 @@ export const staffApi = {
 
   create: (data: {
     firstName: string; lastName: string; phone: string; password: string;
-    staffNumber: string; hireDate: string; roles: string[];
+    staffNumber: string; hireDate: string; roles: string[]; salary?: number;
   }) =>
     apiClient<ApiEmployee>('/staff/', { method: 'POST', body: JSON.stringify(data) }),
+
+  update: (id: number, data: Partial<{
+    firstName: string; lastName: string; phone: string;
+    hireDate: string; status: string; roles: string[]; salary: number;
+  }>) =>
+    apiClient<ApiEmployee>(`/staff/${id}/`, { method: 'PATCH', body: JSON.stringify(data) }),
 
   delete: (id: number) =>
     apiClient<void>(`/staff/${id}/`, { method: 'DELETE' }),

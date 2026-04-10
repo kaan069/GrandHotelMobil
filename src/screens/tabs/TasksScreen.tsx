@@ -156,6 +156,7 @@ const TASK_MODULES: Record<string, TaskModule[]> = {
     { id: 'meal', label: 'Yemek Programı', icon: 'restaurant-outline', color: '#F59E0B', screen: 'MealProgram', module: 'restaurant' },
     { id: 'stock', label: 'Stok Yönetimi', icon: 'cube-outline', color: '#EC4899', screen: 'Stock', module: 'minibar' },
     { id: 'minibar-rooms', label: 'Minibar Kontrol', icon: 'wine-outline', color: '#8B5CF6', screen: 'MinibarRooms', module: 'minibar' },
+    { id: 'staff', label: 'Personel Yönetimi', icon: 'people-outline', color: '#1565C0', screen: 'Staff', module: 'staff' },
     { id: 'cameras', label: 'Kameralar', icon: 'videocam-outline', color: '#607D8B', screen: 'Cameras', module: 'cameras' },
     { id: 'reports', label: 'Raporlar', icon: 'bar-chart-outline', color: '#F97316', screen: 'Reports', module: 'base' },
     { id: 'night-audit', label: 'Gün Sonu', icon: 'moon-outline', color: '#1E293B', screen: 'NightAudit', module: 'base' },

@@ -22,7 +22,9 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { AppCard, AppButton } from '../../components/common';
 import { colors, spacing, fontSize } from '../../theme';
-import { kazancApi } from '../../services/api';
+import { kazancApi, staffApi } from '../../services/api';
+import useAuth from '../../hooks/useAuth';
+import { ROLES } from '../../utils/constants';
 import GeneralReportScreen from './GeneralReportScreen';
 
 interface StatBoxProps {
@@ -47,22 +49,40 @@ const ReportsScreen: React.FC<{ onClose?: () => void }> = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [stats, setStats] = useState<any>(null);
   const [daily, setDaily] = useState<any>(null);
+  const [totalSalaries, setTotalSalaries] = useState(0);
+  const [salaryEmployeeCount, setSalaryEmployeeCount] = useState(0);
+
+  const { user } = useAuth();
+  const isManagement =
+    user?.role === ROLES.PATRON ||
+    user?.role === ROLES.MANAGER ||
+    (user?.roles && user.roles.some((r) => r === ROLES.PATRON || r === ROLES.MANAGER));
 
   const fetchData = useCallback(async () => {
     try {
-      const [statsData, dailyData] = await Promise.all([
+      const promises: Promise<any>[] = [
         kazancApi.dashboardStats(),
         kazancApi.dailySummary(),
-      ]);
+      ];
+      if (isManagement) {
+        promises.push(staffApi.getAll());
+      }
+      const [statsData, dailyData, staffData] = await Promise.all(promises);
       setStats(statsData);
       setDaily(dailyData);
+      if (isManagement && staffData) {
+        const active = (staffData as any[]).filter((e) => e.status === 'active');
+        const sum = active.reduce((s, e) => s + Number(e.salary || 0), 0);
+        setTotalSalaries(sum);
+        setSalaryEmployeeCount(active.filter((e) => e.salary && Number(e.salary) > 0).length);
+      }
     } catch (err) {
       console.error('Rapor verisi yüklenemedi:', err);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [isManagement]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -105,6 +125,32 @@ const ReportsScreen: React.FC<{ onClose?: () => void }> = () => {
           icon="bar-chart-outline"
           style={{ marginBottom: spacing.md }}
         />
+
+        {/* === Sabit Giderler — sadece patron/müdür === */}
+        {isManagement && (
+          <>
+            <Text style={styles.sectionTitle}>Sabit Giderler (Aylık)</Text>
+            <AppCard style={styles.fixedExpenseCard}>
+              <View style={styles.fixedExpenseRow}>
+                <View style={styles.fixedExpenseIcon}>
+                  <Ionicons name="people-outline" size={24} color={colors.primary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.fixedExpenseLabel}>Eleman Maaşları</Text>
+                  <Text style={styles.fixedExpenseSubtext}>
+                    {salaryEmployeeCount} aktif eleman
+                  </Text>
+                </View>
+                <Text style={styles.fixedExpenseValue}>
+                  {totalSalaries.toLocaleString('tr-TR', {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })} ₺
+                </Text>
+              </View>
+            </AppCard>
+          </>
+        )}
 
         {/* === Gelir Raporu === */}
         <Text style={styles.sectionTitle}>Gelir Raporu</Text>
@@ -300,6 +346,16 @@ const styles = StyleSheet.create({
   logRoom: { fontSize: fontSize.sm, color: colors.primary, fontWeight: '600' },
   logTimeText: { fontSize: fontSize.sm, color: colors.textSecondary },
   emptyText: { fontSize: fontSize.sm, color: colors.textDisabled, textAlign: 'center', paddingVertical: spacing.md, fontStyle: 'italic' },
+  fixedExpenseCard: { marginBottom: spacing.sm },
+  fixedExpenseRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  fixedExpenseIcon: {
+    width: 48, height: 48, borderRadius: 24,
+    backgroundColor: colors.primary + '15',
+    justifyContent: 'center', alignItems: 'center',
+  },
+  fixedExpenseLabel: { fontSize: fontSize.md, fontWeight: '600', color: colors.textPrimary },
+  fixedExpenseSubtext: { fontSize: fontSize.xs, color: colors.textSecondary, marginTop: 2 },
+  fixedExpenseValue: { fontSize: fontSize.lg, fontWeight: '700', color: colors.error },
 });
 
 export default ReportsScreen;
