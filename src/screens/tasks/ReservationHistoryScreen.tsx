@@ -23,8 +23,8 @@ import { AppCard, AppInput, StatusChip, EmptyState, LoadingState } from '../../c
 import { colors, spacing, fontSize, borderRadius } from '../../theme';
 import { FOLIO_CATEGORY_LABELS } from '../../utils/constants';
 import useApi from '../../hooks/useApi';
-import { reservationsApi } from '../../services/api';
-import type { Reservation, ReservationDetail } from '../../utils/types';
+import { reservationsApi, tabsApi } from '../../services/api';
+import type { Reservation, ReservationDetail, ApiTab } from '../../utils/types';
 
 interface ReservationHistoryScreenProps {
   onClose: () => void;
@@ -51,6 +51,7 @@ const ReservationHistoryScreen: React.FC<ReservationHistoryScreenProps> = ({ onC
   const [refreshing, setRefreshing] = useState(false);
   const [selectedDetail, setSelectedDetail] = useState<ReservationDetail | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
+  const [selectedTabs, setSelectedTabs] = useState<ApiTab[]>([]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -58,14 +59,19 @@ const ReservationHistoryScreen: React.FC<ReservationHistoryScreenProps> = ({ onC
     setRefreshing(false);
   }, [refetch]);
 
-  /* Rezervasyon detayını yükle */
+  /* Rezervasyon detayını yükle (folio + adisyonlar) */
   const handleSelectReservation = async (reservation: Reservation) => {
     setLoadingDetail(true);
     try {
-      const detail = await reservationsApi.getById(reservation.id);
+      const [detail, tabs] = await Promise.all([
+        reservationsApi.getById(reservation.id),
+        tabsApi.getAll({ reservationId: reservation.id }).catch(() => [] as ApiTab[]),
+      ]);
       setSelectedDetail(detail);
+      setSelectedTabs(tabs || []);
     } catch {
       setSelectedDetail(null);
+      setSelectedTabs([]);
     } finally {
       setLoadingDetail(false);
     }
@@ -106,13 +112,27 @@ const ReservationHistoryScreen: React.FC<ReservationHistoryScreenProps> = ({ onC
   if (selectedDetail) {
     const parseAmount = (a: number | string) => typeof a === 'string' ? parseFloat(a) : a;
 
+    // Folio toplamlarını anlık hesapla (DB total_amount/paid_amount güvenilir değil)
+    const folios = selectedDetail.folioItems || [];
+    const charges = folios
+      .filter((f) => !['payment', 'discount'].includes(f.category))
+      .reduce((s, f) => s + parseAmount(f.amount), 0);
+    const discounts = folios
+      .filter((f) => f.category === 'discount')
+      .reduce((s, f) => s + parseAmount(f.amount), 0);
+    const payments = folios
+      .filter((f) => f.category === 'payment')
+      .reduce((s, f) => s + parseAmount(f.amount), 0);
+    const balance = charges - discounts - payments;
+    const isPast = !selectedDetail.isActive;
+
     return (
       <View style={styles.container}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => setSelectedDetail(null)}>
+          <TouchableOpacity onPress={() => { setSelectedDetail(null); setSelectedTabs([]); }}>
             <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
           </TouchableOpacity>
-          <Text style={styles.title}>Oda {selectedDetail.roomNumber}</Text>
+          <Text style={styles.title}>{isPast ? 'Geçmiş Rez' : 'Aktif Rez'} · Oda {selectedDetail.roomNumber}</Text>
           <StatusChip
             label={selectedDetail.isActive ? 'Aktif' : 'Geçmiş'}
             color={selectedDetail.isActive ? '#22C55E' : '#64748B'}
@@ -196,16 +216,73 @@ const ReservationHistoryScreen: React.FC<ReservationHistoryScreenProps> = ({ onC
                   </View>
                 ))}
                 <View style={styles.totalRow}>
-                  <Text style={styles.totalLabel}>Toplam</Text>
-                  <Text style={styles.totalValue}>{formatCurrency(selectedDetail.totalAmount)}</Text>
+                  <Text style={styles.totalLabel}>Toplam Ücret</Text>
+                  <Text style={styles.totalValue}>{formatCurrency(charges)}</Text>
                 </View>
+                {discounts > 0 && (
+                  <View style={styles.totalRow}>
+                    <Text style={styles.totalLabel}>İndirim</Text>
+                    <Text style={[styles.totalValue, { color: '#F59E0B' }]}>-{formatCurrency(discounts)}</Text>
+                  </View>
+                )}
                 <View style={styles.totalRow}>
                   <Text style={styles.totalLabel}>Ödenen</Text>
-                  <Text style={[styles.totalValue, { color: '#22C55E' }]}>{formatCurrency(selectedDetail.paidAmount)}</Text>
+                  <Text style={[styles.totalValue, { color: '#22C55E' }]}>{formatCurrency(payments)}</Text>
+                </View>
+                <View style={[styles.totalRow, { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 8, marginTop: 4 }]}>
+                  <Text style={[styles.totalLabel, { fontWeight: '700' }]}>Bakiye</Text>
+                  <Text style={[styles.totalValue, { color: balance > 0 ? '#EF4444' : '#22C55E', fontWeight: '700' }]}>
+                    {formatCurrency(balance)}
+                  </Text>
                 </View>
               </>
             ) : (
               <Text style={styles.emptyText}>Hesap kaydı yok</Text>
+            )}
+          </AppCard>
+
+          {/* Adisyonlar */}
+          <AppCard style={styles.card}>
+            <View style={styles.sectionHeader}>
+              <Ionicons name="restaurant" size={20} color={colors.primary} />
+              <Text style={styles.sectionTitle}>Adisyonlar ({selectedTabs.length})</Text>
+            </View>
+            {selectedTabs.length > 0 ? (
+              selectedTabs.map((t) => (
+                <View key={t.id} style={styles.tabBox}>
+                  <View style={styles.tabHeader}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
+                      <View style={styles.tabNoBadge}>
+                        <Text style={styles.tabNoText}>{t.tabNo}</Text>
+                      </View>
+                      <StatusChip
+                        label={t.status === 'paid' ? 'Ödendi' : t.status === 'closed' ? 'Kapandı' : t.status === 'open' ? 'Açık' : t.status}
+                        color={t.status === 'paid' ? '#22C55E' : t.status === 'open' ? '#F59E0B' : '#64748B'}
+                      />
+                    </View>
+                    <Text style={styles.tabAmount}>{formatCurrency(t.totalAmount)}</Text>
+                  </View>
+                  {t.servicePoint && (
+                    <Text style={styles.tabMeta}>{t.servicePoint}</Text>
+                  )}
+                  {t.items && t.items.length > 0 && (
+                    <View style={styles.tabItems}>
+                      {t.items.map((item) => (
+                        <View key={item.id} style={styles.tabItemRow}>
+                          <Text style={styles.tabItemDesc} numberOfLines={1}>
+                            {item.quantity}x {item.description}
+                          </Text>
+                          <Text style={styles.tabItemPrice}>
+                            {formatCurrency(item.totalPrice)}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </View>
+              ))
+            ) : (
+              <Text style={styles.emptyText}>Adisyon kaydı yok</Text>
             )}
           </AppCard>
         </ScrollView>
@@ -411,6 +488,44 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  // Adisyon kart stilleri
+  tabBox: {
+    padding: spacing.sm,
+    marginBottom: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: borderRadius.md,
+    backgroundColor: '#fafafa',
+  },
+  tabHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  tabNoBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: borderRadius.sm,
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
+  tabNoText: { fontSize: fontSize.xs, fontWeight: '700', color: colors.primary },
+  tabAmount: { fontSize: fontSize.md, fontWeight: '700', color: colors.textPrimary },
+  tabMeta: { fontSize: fontSize.xs, color: colors.textSecondary, marginBottom: 4 },
+  tabItems: {
+    marginTop: 6,
+    paddingLeft: 8,
+    borderLeftWidth: 2,
+    borderLeftColor: colors.primary,
+  },
+  tabItemRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 2,
+  },
+  tabItemDesc: { fontSize: fontSize.sm, color: colors.textPrimary, flex: 1, marginRight: 8 },
+  tabItemPrice: { fontSize: fontSize.sm, color: colors.textPrimary, fontWeight: '500' },
 });
 
 export default ReservationHistoryScreen;

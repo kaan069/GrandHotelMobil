@@ -821,10 +821,11 @@ export const tablesApi = {
 
 /** Adisyon (Tab) yönetimi */
 export const tabsApi = {
-  getAll: (filters?: { status?: string; roomId?: number; servicePoint?: string }) => {
+  getAll: (filters?: { status?: string; roomId?: number; reservationId?: number; servicePoint?: string }) => {
     const params = new URLSearchParams();
     if (filters?.status) params.append('status', filters.status);
     if (filters?.roomId) params.append('roomId', String(filters.roomId));
+    if (filters?.reservationId) params.append('reservationId', String(filters.reservationId));
     if (filters?.servicePoint) params.append('servicePoint', filters.servicePoint);
     const qs = params.toString();
     return apiClient<ApiTab[]>(`/tabs/${qs ? '?' + qs : ''}`);
