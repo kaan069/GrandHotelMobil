@@ -84,8 +84,15 @@ async function apiClient<T>(endpoint: string, options?: RequestInit): Promise<T>
     return undefined as T;
   }
 
-  // 401 → Token refresh dene (login endpoint'i hariç)
-  if (response.status === 401 && !endpoint.includes('/staff/login')) {
+  // 401 veya token süresi dolmuş 403 → Token refresh dene (login endpoint'i hariç)
+  // Backend süresi dolmuş token için 401 yerine 403 dönebiliyor (DRF default davranışı)
+  if (
+    (response.status === 401 ||
+      (response.status === 403 && /token|süres/i.test(
+        await response.clone().text().catch(() => '')
+      ))) &&
+    !endpoint.includes('/staff/login')
+  ) {
     const refreshed = await _tryRefreshToken();
     if (refreshed) {
       // Yeni token ile tekrar dene
