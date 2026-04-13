@@ -616,6 +616,16 @@ export const leavesApi = {
 
   getForEmployee: (employeeId: number) =>
     apiClient<ApiLeave[]>(`/staff/${employeeId}/leaves/`),
+
+  create: (data: {
+    employeeId: number; leaveType: string;
+    startDate: string; endDate: string;
+    deductFromAnnual?: boolean; note?: string; approvedById?: number;
+  }) =>
+    apiClient<ApiLeave>('/leaves/', { method: 'POST', body: JSON.stringify(data) }),
+
+  cancel: (id: number) =>
+    apiClient<ApiLeave>(`/leaves/${id}/cancel/`, { method: 'POST' }),
 };
 
 /* ==================== MULTIPART UPLOAD HELPER ==================== */

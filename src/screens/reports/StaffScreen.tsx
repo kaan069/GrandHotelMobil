@@ -24,9 +24,10 @@ import { colors, spacing, fontSize, borderRadius } from '../../theme';
 import { ROLE_LABELS } from '../../utils/constants';
 import { getYearsOfService } from '../../utils/leaveCalculator';
 import { staffApi, leavesApi } from '../../services/api';
-import type { ApiEmployee } from '../../services/api';
+import type { ApiEmployee, ApiLeave } from '../../services/api';
 import useAuth from '../../hooks/useAuth';
 import EmployeeAddModal from './EmployeeAddModal';
+import LeaveGrantModal from '../../components/employees/LeaveGrantModal';
 
 interface StaffScreenProps {
   onClose: () => void;
@@ -40,6 +41,8 @@ const StaffScreen: React.FC<StaffScreenProps> = ({ onClose }) => {
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<ApiEmployee | null>(null);
+  const [leaveModalEmployee, setLeaveModalEmployee] = useState<ApiEmployee | null>(null);
+  const [employeeLeaves, setEmployeeLeaves] = useState<Record<number, ApiLeave[]>>({});
 
   /** Maaşı Türk locale'inde biçimle */
   const fmtSalary = (val: number | string | null | undefined) => {
@@ -137,89 +140,77 @@ const StaffScreen: React.FC<StaffScreenProps> = ({ onClose }) => {
     );
   };
 
-  /** İzin ver */
-  const handleLeave = (emp: ApiEmployee) => {
-    const leaveTypes = [
-      { text: 'Haftalık İzin', type: 'weekly' },
-      { text: 'Yıllık İzin', type: 'annual' },
-      { text: 'Günlük İzin', type: 'daily' },
-      { text: 'Ücretsiz İzin', type: 'unpaid' },
-    ];
+  /** Eleman genişletildiğinde izin geçmişini çek */
+  const fetchLeaves = async (empId: number) => {
+    try {
+      const leaves = await leavesApi.getForEmployee(empId);
+      setEmployeeLeaves((prev) => ({ ...prev, [empId]: leaves }));
+    } catch {
+      // Sessiz hata
+    }
+  };
 
+  /** Eleman kartı genişletme — izinleri de çek */
+  const handleExpand = (empId: number) => {
+    const isExpanding = expandedId !== empId;
+    setExpandedId(isExpanding ? empId : null);
+    if (isExpanding && !employeeLeaves[empId]) {
+      fetchLeaves(empId);
+    }
+  };
+
+  /** İzin iptal et */
+  const handleCancelLeave = (leave: ApiLeave, emp: ApiEmployee) => {
     Alert.alert(
-      `${emp.fullName} — İzin Ver`,
-      'İzin tipini seçin:',
+      'İzin İptal',
+      `${emp.fullName} — ${leave.startDate} tarihli izni iptal etmek istiyor musunuz?`,
       [
-        ...leaveTypes.map((lt) => ({
-          text: lt.text,
-          onPress: () => {
-            const today = new Date().toISOString().split('T')[0];
-
-            /* Haftalık izin zaten kullanılmışsa uyar */
-            if (lt.type === 'weekly' && emp.hasWeeklyLeaveThisWeek) {
-              Alert.alert(
-                'Haftalık İzin Kullanılmış',
-                'Bu hafta zaten haftalık izin kullanılmış. Yıllık izinden düşülsün mü?',
-                [
-                  { text: 'İptal', style: 'cancel' },
-                  {
-                    text: 'Evet, Yıllıktan Düş',
-                    onPress: async () => {
-                      try {
-                        await leavesApi.create({
-                          employeeId: emp.id,
-                          leaveType: 'weekly',
-                          startDate: today,
-                          endDate: today,
-                          deductFromAnnual: true,
-                          note: 'Haftalık izin (yıllıktan düşüldü)',
-                          approvedById: user?.id,
-                        });
-                        Alert.alert('Başarılı', 'İzin verildi');
-                        fetchStaff();
-                      } catch {
-                        Alert.alert('Hata', 'İzin verilemedi');
-                      }
-                    },
-                  },
-                ]
-              );
-              return;
+        { text: 'Vazgeç', style: 'cancel' },
+        {
+          text: 'İptal Et',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await leavesApi.cancel(leave.id);
+              Alert.alert('Başarılı', 'İzin iptal edildi');
+              fetchLeaves(emp.id);
+              fetchStaff();
+            } catch (err: any) {
+              Alert.alert('Hata', err?.message || 'İzin iptal edilemedi');
             }
-
-            /* Normal izin ver */
-            Alert.alert(
-              lt.text,
-              'Bugün için izin verilsin mi?',
-              [
-                { text: 'İptal', style: 'cancel' },
-                {
-                  text: 'Onayla',
-                  onPress: async () => {
-                    try {
-                      await leavesApi.create({
-                        employeeId: emp.id,
-                        leaveType: lt.type,
-                        startDate: today,
-                        endDate: today,
-                        deductFromAnnual: lt.type === 'annual' || lt.type === 'daily',
-                        note: lt.text,
-                        approvedById: user?.id,
-                      });
-                      Alert.alert('Başarılı', `${emp.fullName} izinli olarak işaretlendi`);
-                      fetchStaff();
-                    } catch {
-                      Alert.alert('Hata', 'İzin verilemedi');
-                    }
-                  },
-                },
-              ]
-            );
           },
-        })),
-        { text: 'İptal', style: 'cancel' },
+        },
       ]
     );
+  };
+
+  /** İzin verme — LeaveGrantModal kullan */
+  const handleLeaveGrant = async (data: {
+    employeeId: number; leaveType: string;
+    startDate: string; endDate: string;
+    deductFromAnnual: boolean; note: string;
+  }) => {
+    try {
+      await leavesApi.create({
+        ...data,
+        approvedById: user?.id,
+      });
+      Alert.alert('Başarılı', 'İzin verildi');
+      setLeaveModalEmployee(null);
+      fetchStaff();
+      // İzin geçmişini de yenile
+      fetchLeaves(data.employeeId);
+    } catch (err: any) {
+      Alert.alert('Hata', err?.message || 'İzin verilemedi');
+    }
+  };
+
+  const LEAVE_TYPE_LABELS: Record<string, string> = {
+    weekly: 'Haftalık', annual: 'Yıllık', daily: 'Günlük', unpaid: 'Ücretsiz',
+  };
+
+  const LEAVE_STATUS_LABELS: Record<string, string> = {
+    approved: 'Onaylı', pending: 'Beklemede', cancelled: 'İptal', rejected: 'Reddedildi',
   };
 
   if (loading) {
@@ -289,7 +280,7 @@ const StaffScreen: React.FC<StaffScreenProps> = ({ onClose }) => {
           const remaining = item.remainingAnnualLeave || 0;
 
           return (
-            <TouchableOpacity activeOpacity={0.7} onPress={() => setExpandedId(isExpanded ? null : item.id)}>
+            <TouchableOpacity activeOpacity={0.7} onPress={() => handleExpand(item.id)}>
               <AppCard style={styles.staffCard}>
                 {/* Üst satır */}
                 <View style={styles.staffTop}>
@@ -358,11 +349,49 @@ const StaffScreen: React.FC<StaffScreenProps> = ({ onClose }) => {
                       <Text style={styles.detailText}>Henüz 1 yılını doldurmadı</Text>
                     )}
 
+                    {/* İzin Geçmişi */}
+                    {employeeLeaves[item.id] && employeeLeaves[item.id].length > 0 && (
+                      <>
+                        <Text style={styles.detailTitle}>Son İzinler</Text>
+                        {employeeLeaves[item.id].slice(0, 10).map((leave) => (
+                          <View key={leave.id} style={styles.leaveHistoryRow}>
+                            <View style={{ flex: 1 }}>
+                              <Text style={styles.leaveHistoryType}>
+                                {LEAVE_TYPE_LABELS[leave.leaveType] || leave.leaveType}
+                                {' · '}
+                                <Text style={{ fontWeight: '400', color: colors.textSecondary }}>
+                                  {leave.startDate === leave.endDate
+                                    ? leave.startDate
+                                    : `${leave.startDate} → ${leave.endDate}`}
+                                </Text>
+                                {' · '}
+                                <Text style={{ fontWeight: '400' }}>{leave.durationDays} gün</Text>
+                              </Text>
+                              {leave.note ? (
+                                <Text style={styles.leaveHistoryNote} numberOfLines={1}>{leave.note}</Text>
+                              ) : null}
+                            </View>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                              <StatusChip
+                                label={LEAVE_STATUS_LABELS[leave.status] || leave.status}
+                                color={leave.status === 'approved' ? colors.success : leave.status === 'cancelled' ? colors.error : colors.warning}
+                              />
+                              {leave.status === 'approved' && (
+                                <TouchableOpacity onPress={() => handleCancelLeave(leave, item)}>
+                                  <Ionicons name="close-circle" size={22} color={colors.error} />
+                                </TouchableOpacity>
+                              )}
+                            </View>
+                          </View>
+                        ))}
+                      </>
+                    )}
+
                     {/* Butonlar */}
                     <View style={styles.actionRow}>
                       <TouchableOpacity
                         style={styles.leaveBtn}
-                        onPress={() => handleLeave(item)}
+                        onPress={() => setLeaveModalEmployee(item)}
                       >
                         <Ionicons name="calendar-outline" size={16} color="#fff" />
                         <Text style={styles.leaveBtnText}>İzin Ver</Text>
@@ -408,6 +437,25 @@ const StaffScreen: React.FC<StaffScreenProps> = ({ onClose }) => {
             onClose={() => setEditingEmployee(null)}
             onSave={handleUpdateEmployee}
             editingEmployee={editingEmployee}
+          />
+        )}
+      </Modal>
+
+      {/* İzin Verme Modalı */}
+      <Modal visible={!!leaveModalEmployee} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setLeaveModalEmployee(null)}>
+        {leaveModalEmployee && (
+          <LeaveGrantModal
+            key={`leave-${leaveModalEmployee.id}`}
+            onClose={() => setLeaveModalEmployee(null)}
+            onSave={handleLeaveGrant}
+            employee={{
+              id: leaveModalEmployee.id,
+              fullName: leaveModalEmployee.fullName,
+              hasWeeklyLeaveThisWeek: leaveModalEmployee.hasWeeklyLeaveThisWeek,
+              remainingAnnualLeave: leaveModalEmployee.remainingAnnualLeave,
+              annualLeaveEntitlement: leaveModalEmployee.annualLeaveEntitlement,
+              weeklyLeaveRemaining: leaveModalEmployee.weeklyLeaveRemaining,
+            }}
           />
         )}
       </Modal>
@@ -468,6 +516,13 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
   },
   deleteText: { fontSize: fontSize.sm, color: colors.error, fontWeight: '500' },
+  // İzin geçmişi
+  leaveHistoryRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: colors.divider,
+  },
+  leaveHistoryType: { fontSize: fontSize.sm, fontWeight: '600', color: colors.textPrimary },
+  leaveHistoryNote: { fontSize: fontSize.xs, color: colors.textSecondary, marginTop: 2 },
 });
 
 export default StaffScreen;

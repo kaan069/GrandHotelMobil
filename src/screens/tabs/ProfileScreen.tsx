@@ -23,7 +23,9 @@ import useAuth from '../../hooks/useAuth';
 import { colors, spacing, fontSize, borderRadius } from '../../theme';
 import { ROLE_LABELS, APP_NAME } from '../../utils/constants';
 import { calculateAnnualLeave, getYearsOfService } from '../../utils/leaveCalculator';
-import { staffApi } from '../../services/api';
+import { staffApi, leavesApi } from '../../services/api';
+import type { ApiLeave } from '../../services/api';
+import { StatusChip } from '../../components/common';
 import ShiftsScreen from '../tasks/ShiftsScreen';
 import EarningsScreen from './EarningsScreen';
 
@@ -51,6 +53,7 @@ const ProfileScreen: React.FC = () => {
   const [isOnLeave, setIsOnLeave] = useState(false);
   const [leaveInfo, setLeaveInfo] = useState<{ used: number; remaining: number; entitlement: number } | null>(null);
   const [workInfo, setWorkInfo] = useState<{ consecutive: number; total: number; weeklyEarned: number; weeklyUsed: number; weeklyRemaining: number } | null>(null);
+  const [myLeaves, setMyLeaves] = useState<ApiLeave[]>([]);
 
   /* Backend'den izin + çalışma bilgisi çek */
   useEffect(() => {
@@ -71,6 +74,10 @@ const ProfileScreen: React.FC = () => {
           weeklyRemaining: (emp.weeklyLeaveRemaining as number) || 0,
         });
       })
+      .catch(() => {});
+    // İzin geçmişini çek
+    leavesApi.getForEmployee(user.id)
+      .then(setMyLeaves)
       .catch(() => {});
   }, [user]);
 
@@ -168,6 +175,38 @@ const ProfileScreen: React.FC = () => {
 
         {/* İzinlerim */}
         <LeaveCard hireDate={user.hireDate} leaveInfo={leaveInfo} />
+
+        {/* İzin Geçmişim */}
+        {myLeaves.length > 0 && (
+          <AppCard style={styles.leaveCard}>
+            <Text style={styles.leaveTitle}>İzin Geçmişim</Text>
+            <View style={styles.divider} />
+            {myLeaves.slice(0, 15).map((leave) => (
+              <View key={leave.id} style={styles.leaveHistoryRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.leaveHistoryType}>
+                    {{ weekly: 'Haftalık', annual: 'Yıllık', daily: 'Günlük', unpaid: 'Ücretsiz' }[leave.leaveType] || leave.leaveType}
+                    {' · '}
+                    {leave.startDate === leave.endDate
+                      ? leave.startDate
+                      : `${leave.startDate} → ${leave.endDate}`}
+                    {' · '}
+                    {leave.durationDays} gün
+                  </Text>
+                  {leave.note ? <Text style={styles.leaveHistoryNote} numberOfLines={1}>{leave.note}</Text> : null}
+                </View>
+                <StatusChip
+                  label={
+                    { approved: 'Onaylı', pending: 'Beklemede', cancelled: 'İptal', rejected: 'Reddedildi' }[leave.status] || leave.status
+                  }
+                  color={
+                    leave.status === 'approved' ? '#22C55E' : leave.status === 'cancelled' ? '#EF4444' : '#F59E0B'
+                  }
+                />
+              </View>
+            ))}
+          </AppCard>
+        )}
 
         {/* Çalışma Durumu */}
         {workInfo && (
@@ -540,6 +579,24 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontSize: fontSize.xs,
     color: colors.textDisabled,
+  },
+  leaveHistoryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.divider,
+  },
+  leaveHistoryType: {
+    fontSize: fontSize.sm,
+    fontWeight: '600',
+    color: colors.textPrimary,
+  },
+  leaveHistoryNote: {
+    fontSize: fontSize.xs,
+    color: colors.textSecondary,
+    marginTop: 2,
   },
 });
 
