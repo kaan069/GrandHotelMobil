@@ -160,7 +160,7 @@ export const roomsApi = {
     apiClient<ApiRoom>(`/rooms/${id}/`),
 
   /** Check-in: Yeni rezervasyon + misafir girişi */
-  checkIn: (roomId: number, body: { guestId: number; notes?: string }) =>
+  checkIn: (roomId: number, body: { guestId: number; notes?: string; companyId?: number; checkOut?: string }) =>
     apiClient<ApiRoom>(`/rooms/${roomId}/check_in/`, {
       method: 'POST',
       body: JSON.stringify(body),
@@ -358,8 +358,11 @@ export const reservationsApi = {
     apiClient<Reservation>(`/reservations/${id}/cancel/`, { method: 'POST' }),
 
   /** Rezerve → Check-in dönüşümü */
-  checkIn: (id: number) =>
-    apiClient<Reservation>(`/reservations/${id}/check_in/`, { method: 'POST' }),
+  checkIn: (id: number, body?: { companyId?: number | null }) =>
+    apiClient<Reservation>(`/reservations/${id}/check_in/`, {
+      method: 'POST',
+      body: body ? JSON.stringify(body) : undefined,
+    }),
 };
 
 /* ==================== FOLIOS API ==================== */

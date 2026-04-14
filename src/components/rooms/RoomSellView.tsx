@@ -133,6 +133,7 @@ const RoomSellView: React.FC<RoomSellViewProps> = ({ room, onClose, onRoomUpdate
     .reduce((sum, f) => sum + parseAmount(f.amount), 0);
   const folioTotal = folioCharges - folioDiscounts;
   const folioBalance = folioTotal - folioPayments;
+  const hasPayment = folios.some((f) => f.category === 'payment');
 
   /* ─── Misafir ekleme (local state — henüz check-in yapılmadıysa) ─── */
   const handleNewGuestSave = (guest: Guest) => {
@@ -287,8 +288,10 @@ const RoomSellView: React.FC<RoomSellViewProps> = ({ room, onClose, onRoomUpdate
             setLoading(true);
             try {
               if (isReserved) {
-                /* Mevcut rezervasyonu check-in'e çevir */
-                await reservationsApi.checkIn(room.reservationId!);
+                /* Mevcut rezervasyonu check-in'e çevir — dropdown'dan seçili firma gönderilir */
+                await reservationsApi.checkIn(room.reservationId!, {
+                  companyId: selectedCompanyId,
+                });
                 /* Varsa ek misafirler ekle */
                 for (let i = 0; i < guests.length; i++) {
                   await roomsApi.addGuest(room.id, guests[i].guestId);
@@ -298,6 +301,7 @@ const RoomSellView: React.FC<RoomSellViewProps> = ({ room, onClose, onRoomUpdate
                 await roomsApi.checkIn(room.id, {
                   guestId: guests[0].guestId,
                   notes,
+                  companyId: selectedCompanyId ?? undefined,
                 });
                 for (let i = 1; i < guests.length; i++) {
                   await roomsApi.addGuest(room.id, guests[i].guestId);
@@ -318,6 +322,16 @@ const RoomSellView: React.FC<RoomSellViewProps> = ({ room, onClose, onRoomUpdate
 
   /* ─── Check-out ─── */
   const handleCheckOut = (force = false) => {
+    // Ön-kontrol: folio'da hiç ödeme yoksa ve force değilse → uyar
+    if (!force && !hasPayment) {
+      Alert.alert(
+        'Ödeme Eksik',
+        'Bu konaklama için folio\'ya henüz ücret/ödeme eklenmemiş. Lütfen önce folio kayıtlarını oluşturup ödeme alınız.',
+        [{ text: 'Tamam' }]
+      );
+      return;
+    }
+
     const message = folioBalance > 0
       ? `Oda ${room.number} için check-out yapılsın mı?\n\n⚠️ Ödenmemiş bakiye: ${formatCurrency(folioBalance)}`
       : `Oda ${room.number} için check-out yapılsın mı?`;
