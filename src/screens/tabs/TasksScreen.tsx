@@ -41,6 +41,7 @@ import RoomServiceScreen from '../tasks/RoomServiceScreen';
 import RoomStatusScreen from '../tasks/RoomStatusScreen';
 import ComplaintsScreen from '../tasks/ComplaintsScreen';
 import CompanyScreen from '../tasks/CompanyScreen';
+import DebtorsScreen from '../tasks/DebtorsScreen';
 import ReservationHistoryScreen from '../tasks/ReservationHistoryScreen';
 import MyTasksScreen from '../tasks/MyTasksScreen';
 import CreateTaskScreen from '../tasks/CreateTaskScreen';
@@ -134,6 +135,7 @@ const TASK_MODULES: Record<string, TaskModule[]> = {
     { id: 'room-service', label: 'Oda Servisi', icon: 'cafe-outline', color: '#8B5CF6', screen: 'RoomService', module: 'restaurant' },
     { id: 'room-status', label: 'Oda Durumu', icon: 'bed-outline', color: '#06B6D4', screen: 'RoomStatus', module: 'base' },
     { id: 'companies', label: 'Firma Yönetimi', icon: 'business-outline', color: '#1565C0', screen: 'Companies', module: 'base' },
+    { id: 'debtors', label: 'Borçlular', icon: 'cash-outline', color: '#DC2626', screen: 'Debtors', module: 'base' },
     { id: 'reservations', label: 'Rezervasyon Geçmişi', icon: 'time-outline', color: '#7C3AED', screen: 'ReservationHistory', module: 'base' },
     { id: 'meal', label: 'Yemek Programı', icon: 'restaurant-outline', color: '#F59E0B', screen: 'MealProgram', module: 'restaurant' },
     { id: 'night-audit', label: 'Gün Sonu', icon: 'moon-outline', color: '#1E293B', screen: 'NightAudit', module: 'base' },
@@ -151,6 +153,7 @@ const TASK_MODULES: Record<string, TaskModule[]> = {
     { id: 'room-service', label: 'Oda Servisi', icon: 'cafe-outline', color: '#8B5CF6', screen: 'RoomService', module: 'restaurant' },
     { id: 'room-status', label: 'Oda Durumu', icon: 'bed-outline', color: '#06B6D4', screen: 'RoomStatus', module: 'base' },
     { id: 'companies', label: 'Firma Yönetimi', icon: 'business-outline', color: '#1565C0', screen: 'Companies', module: 'base' },
+    { id: 'debtors', label: 'Borçlular', icon: 'cash-outline', color: '#DC2626', screen: 'Debtors', module: 'base' },
     { id: 'reservations', label: 'Rezervasyon Geçmişi', icon: 'time-outline', color: '#7C3AED', screen: 'ReservationHistory', module: 'base' },
     { id: 'shopping', label: 'Alışveriş Listesi', icon: 'cart-outline', color: '#22C55E', screen: 'ShoppingList', module: 'restaurant' },
     { id: 'meal', label: 'Yemek Programı', icon: 'restaurant-outline', color: '#F59E0B', screen: 'MealProgram', module: 'restaurant' },
@@ -174,6 +177,7 @@ const TASK_MODULES: Record<string, TaskModule[]> = {
     { id: 'room-service', label: 'Oda Servisi', icon: 'cafe-outline', color: '#8B5CF6', screen: 'RoomService', module: 'restaurant' },
     { id: 'room-status', label: 'Oda Durumu', icon: 'bed-outline', color: '#06B6D4', screen: 'RoomStatus', module: 'base' },
     { id: 'companies', label: 'Firma Yönetimi', icon: 'business-outline', color: '#1565C0', screen: 'Companies', module: 'base' },
+    { id: 'debtors', label: 'Borçlular', icon: 'cash-outline', color: '#DC2626', screen: 'Debtors', module: 'base' },
     { id: 'reservations', label: 'Rezervasyon Geçmişi', icon: 'time-outline', color: '#7C3AED', screen: 'ReservationHistory', module: 'base' },
     { id: 'shopping', label: 'Alışveriş Listesi', icon: 'cart-outline', color: '#22C55E', screen: 'ShoppingList', module: 'restaurant' },
     { id: 'meal', label: 'Yemek Programı', icon: 'restaurant-outline', color: '#F59E0B', screen: 'MealProgram', module: 'restaurant' },
@@ -200,6 +204,7 @@ const SCREEN_MAP: Record<string, React.ComponentType<{ onClose: () => void }>> =
   RoomStatus: RoomStatusScreen,
   Complaints: ComplaintsScreen,
   Companies: CompanyScreen,
+  Debtors: DebtorsScreen,
   ReservationHistory: ReservationHistoryScreen,
   MyTasks: MyTasksScreen,
   CreateTask: CreateTaskScreen,

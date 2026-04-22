@@ -29,6 +29,8 @@ import {
 } from '../../utils/constants';
 import useAuth from '../../hooks/useAuth';
 import RoomMinibarView from '../rooms/RoomMinibarView';
+import InvoiceFormModal from './InvoiceFormModal';
+import InvoicePdfModal from './InvoicePdfModal';
 
 export interface Room {
   id: number;
@@ -86,12 +88,27 @@ const getStatusActions = (currentStatus: string): { value: string; label: string
   }
 };
 
+const INVOICE_ROLES: string[] = [
+  ROLES.PATRON,
+  ROLES.MANAGER,
+  ROLES.RECEPTION,
+  ROLES.RECEPTION_MANAGER,
+  ROLES.ACCOUNTANT,
+];
+
 const RoomDetailView: React.FC<RoomDetailViewProps> = ({ room, onClose, onStatusChange }) => {
   const { user } = useAuth();
   const [faultCategory, setFaultCategory] = useState('');
   const [faultDescription, setFaultDescription] = useState('');
   const [faultPhotos, setFaultPhotos] = useState<string[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [invoiceModalOpen, setInvoiceModalOpen] = useState(false);
+  const [invoicePdfResult, setInvoicePdfResult] = useState<
+    { pdfUrl: string; invoiceNo: string; timedOut: boolean } | null
+  >(null);
+
+  const canIssueInvoice =
+    room.status === ROOM_STATUS.OCCUPIED && !!user?.role && INVOICE_ROLES.includes(user.role);
 
   const formatDate = (dateStr: string): string => {
     const d = new Date(dateStr);
@@ -264,6 +281,25 @@ const RoomDetailView: React.FC<RoomDetailViewProps> = ({ room, onClose, onStatus
           )}
         </AppCard>
 
+        {/* Fatura Kes — dolu odalarda, yetkili roller için */}
+        {canIssueInvoice && (
+          <AppCard style={styles.invoiceCard}>
+            <View style={styles.invoiceCardHeader}>
+              <Ionicons name="receipt-outline" size={20} color={colors.primary} />
+              <Text style={styles.sectionTitle}>Fatura</Text>
+            </View>
+            <Text style={styles.invoiceHint}>
+              Paraşüt üzerinden e-arşiv/e-fatura kesin. Müşteri bilgileri otomatik doldurulur.
+            </Text>
+            <AppButton
+              title="Fatura Kes"
+              icon="receipt"
+              onPress={() => setInvoiceModalOpen(true)}
+              style={{ marginTop: spacing.sm }}
+            />
+          </AppCard>
+        )}
+
         {/* Minibar Bölümü — minibar veya housekeeping rolü */}
         {(user?.role === ROLES.MINIBAR || user?.role === ROLES.HOUSEKEEPER) && (
           <RoomMinibarView
@@ -372,6 +408,30 @@ const RoomDetailView: React.FC<RoomDetailViewProps> = ({ room, onClose, onStatus
           />
         </AppCard>
       </ScrollView>
+
+      <InvoiceFormModal
+        visible={invoiceModalOpen}
+        roomId={room.id}
+        roomNumber={room.number}
+        createdBy={user?.name}
+        onClose={() => setInvoiceModalOpen(false)}
+        onSuccess={(result) => {
+          setInvoiceModalOpen(false);
+          setInvoicePdfResult({
+            pdfUrl: result.pdfUrl,
+            invoiceNo: result.invoiceNo,
+            timedOut: result.status === 'timeout',
+          });
+        }}
+      />
+
+      <InvoicePdfModal
+        visible={!!invoicePdfResult}
+        pdfUrl={invoicePdfResult?.pdfUrl || ''}
+        invoiceNo={invoicePdfResult?.invoiceNo || ''}
+        timedOut={invoicePdfResult?.timedOut}
+        onClose={() => setInvoicePdfResult(null)}
+      />
     </View>
   );
 };
@@ -480,6 +540,20 @@ const styles = StyleSheet.create({
   },
   faultCard: {
     marginBottom: spacing.md,
+  },
+  invoiceCard: {
+    marginBottom: spacing.md,
+  },
+  invoiceCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: spacing.xs,
+  },
+  invoiceHint: {
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+    lineHeight: 18,
   },
   faultTitleRow: {
     flexDirection: 'row',

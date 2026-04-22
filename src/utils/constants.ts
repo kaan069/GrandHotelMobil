@@ -266,7 +266,10 @@ import { Platform } from 'react-native';
 const PRODUCTION_URL = 'http://89.252.152.168/api';
 const getDefaultHost = () => {
   if (Platform.OS === 'web') return 'localhost';
-  if (__DEV__) return 'localhost'; // Simülatör (dev mode)
+  if (__DEV__) {
+    // Android emülatöründen host makina → 10.0.2.2, iOS simülatörü → localhost
+    return Platform.OS === 'android' ? '10.0.2.2' : 'localhost';
+  }
   return '89.252.152.168'; // Production sunucu
 };
 const DEFAULT_HOST = getDefaultHost();

@@ -307,6 +307,69 @@ export const companiesApi = {
     }),
 };
 
+/* ==================== ACCOUNT TRANSACTIONS API ==================== */
+
+export interface ApiAccountTransaction {
+  id: number;
+  type: 'debit' | 'credit';
+  amount: string;
+  description: string;
+  status: 'open' | 'settled';
+  companyId: number | null;
+  agencyId: number | null;
+  guestId: number | null;
+  targetType: 'company' | 'agency' | 'guest' | null;
+  targetName: string;
+  sourceReservationId: number | null;
+  sourceFolioItemId: number | null;
+  settledByFolioId: number | null;
+  settledAt: string | null;
+  createdAt: string;
+  createdBy: string;
+  guestName: string;
+  roomNumber: string;
+  reservationCheckIn: string | null;
+  reservationCheckOut: string | null;
+}
+
+export interface AccountTransactionDebtorListResponse {
+  summary: {
+    debitTotal: string;
+    creditTotal: string;
+    netBalance: string;
+    count: number;
+  };
+  items: ApiAccountTransaction[];
+}
+
+export const accountTransactionsApi = {
+  /** Tüm açık cari hesap hareketleri (web + mobil Borçlular ekranı için) */
+  getDebtorList: () =>
+    apiClient<AccountTransactionDebtorListResponse>('/account-transactions/debtor_list/'),
+
+  /** Filtreli liste */
+  getAll: (filters?: { company?: number; agency?: number; guest?: number; status?: string; type?: string }) => {
+    const params = new URLSearchParams();
+    if (filters?.company) params.append('company', String(filters.company));
+    if (filters?.agency) params.append('agency', String(filters.agency));
+    if (filters?.guest) params.append('guest', String(filters.guest));
+    if (filters?.status) params.append('status', filters.status);
+    if (filters?.type) params.append('type', filters.type);
+    const qs = params.toString();
+    return apiClient<ApiAccountTransaction[]>(`/account-transactions/${qs ? '?' + qs : ''}`);
+  },
+
+  /** Cari hareketi ödeme ile kapat */
+  settle: (id: number, data: { amount?: number; description?: string; staffName?: string }) =>
+    apiClient<{ success: boolean; transactionId: number; status: string; folioItemId: number | null }>(
+      `/account-transactions/${id}/settle/`,
+      {
+        method: 'POST',
+        body: JSON.stringify(data),
+      },
+    ),
+};
+
 /* ==================== RESERVATIONS API ==================== */
 
 export const reservationsApi = {
@@ -905,4 +968,109 @@ export const commissionApi = {
     if (filters?.dateTo) params.append('dateTo', filters.dateTo);
     return apiClient<MyCommissionsData>(`/commission/my/?${params.toString()}`);
   },
+};
+
+/* ==================== INVOICES API ==================== */
+
+export interface ApiInvoiceItem {
+  id: number;
+  templateId: number | null;
+  description: string;
+  quantity: string;
+  unitPrice: string;
+  vatRate: number;
+  total: string;
+}
+
+export interface ApiInvoice {
+  id: number;
+  invoiceNo: string;
+  type: string;
+  documentType: string;
+  status: 'draft' | 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
+  customerType: 'individual' | 'company';
+  customerName: string;
+  taxNumber: string;
+  taxOffice: string;
+  address: string;
+  phone: string;
+  email: string;
+  reservationId: number | null;
+  guestId: number | null;
+  companyId: number | null;
+  subtotal: string;
+  vatAmount: string;
+  hasAccommodationTax: boolean;
+  accommodationTaxAmount: string;
+  totalAmount: string;
+  pdfUrl: string;
+  errorMessage: string;
+  issueDate: string;
+  dueDate: string | null;
+  notes: string;
+  createdBy: string;
+  createdAt: string;
+  items: ApiInvoiceItem[];
+}
+
+export interface InvoicePrepareResponse {
+  roomNumber: string;
+  reservationId: number;
+  guests: Array<{ id: number; name: string; tcNo: string; phone: string; email: string; companyId: number | null; companyName: string | null }>;
+  customerType: 'individual' | 'company';
+  customerName: string;
+  taxNumber: string;
+  taxOffice: string;
+  address: string;
+  phone: string;
+  email: string;
+  companyId: number | null;
+  guestId: number;
+  notes: string;
+  folioItems: Array<{ description: string; category: string; amount: string; date: string }>;
+  folioTotal: string;
+  hasAccommodationTax: boolean;
+  accommodationTaxRate: number;
+}
+
+export interface InvoiceCreatePayload {
+  type: 'sales';
+  documentType?: 'e_archive' | 'e_invoice';
+  customerType: 'individual' | 'company';
+  customerName: string;
+  taxNumber?: string;
+  address?: string;
+  reservationId?: number | null;
+  guestId?: number | null;
+  companyId?: number | null;
+  issueDate: string;
+  notes?: string;
+  createdBy?: string;
+  hasAccommodationTax?: boolean;
+  items: Array<{
+    description: string;
+    quantity: number;
+    unitPrice: number;
+    vatRate: number;
+  }>;
+}
+
+export const invoicesApi = {
+  prepare: (roomId: number) =>
+    apiClient<InvoicePrepareResponse>(`/invoices/prepare/${roomId}/`),
+
+  create: (payload: InvoiceCreatePayload) =>
+    apiClient<ApiInvoice>('/invoices/', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  send: (id: number) =>
+    apiClient<ApiInvoice>(`/invoices/${id}/send/`, { method: 'POST' }),
+
+  checkStatus: (id: number) =>
+    apiClient<ApiInvoice>(`/invoices/${id}/check-status/`, { method: 'POST' }),
+
+  get: (id: number) =>
+    apiClient<ApiInvoice>(`/invoices/${id}/`),
 };
