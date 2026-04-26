@@ -38,6 +38,7 @@ import type { RoomGuest, ApiFolioItem, Guest, FolioCategory, Company } from '../
 import NewGuestModal from './NewGuestModal';
 import GuestSearchModal from './GuestSearchModal';
 import FolioAddModal from './FolioAddModal';
+import ReservationConfirmModal from './ReservationConfirmModal';
 
 export interface RoomSellRoom {
   id: number;
@@ -106,9 +107,13 @@ const RoomSellView: React.FC<RoomSellViewProps> = ({ room, onClose, onRoomUpdate
   const [showNewGuest, setShowNewGuest] = useState(false);
   const [showGuestSearch, setShowGuestSearch] = useState(false);
   const [showFolioAdd, setShowFolioAdd] = useState(false);
+  const [showReservationConfirm, setShowReservationConfirm] = useState(false);
 
   const isAvailable = room.status === ROOM_STATUS.AVAILABLE;
   const isOccupied = room.status === ROOM_STATUS.OCCUPIED;
+  const isReserved = !!(room.reservationStatus === 'reserved' && room.reservationId);
+  /* Misafir ekleme/çıkarma direkt API'ye gitmeli mi? (occupied veya reserved) */
+  const guestApiMode = isOccupied || isReserved;
 
   /* Folio yükle — occupied odada reservation var */
   useEffect(() => {
@@ -135,15 +140,26 @@ const RoomSellView: React.FC<RoomSellViewProps> = ({ room, onClose, onRoomUpdate
   const folioBalance = folioTotal - folioPayments;
   const hasPayment = folios.some((f) => f.category === 'payment');
 
-  /* ─── Misafir ekleme (local state — henüz check-in yapılmadıysa) ─── */
-  const handleNewGuestSave = (guest: Guest) => {
+  /* ─── Misafir ekleme (rezerve/dolu ise API, müsait ise local state) ─── */
+  const handleNewGuestSave = async (guest: Guest) => {
     const newRoomGuest: RoomGuest = {
       guestId: guest.id,
       guestName: `${guest.firstName} ${guest.lastName}`,
       phone: guest.phone,
     };
-    setGuests((prev) => [...prev, newRoomGuest]);
-    setShowNewGuest(false);
+    if (guestApiMode) {
+      try {
+        await roomsApi.addGuest(room.id, guest.id);
+        setGuests((prev) => [...prev, newRoomGuest]);
+        setShowNewGuest(false);
+        onRoomUpdate();
+      } catch (err: any) {
+        Alert.alert('Hata', err.message);
+      }
+    } else {
+      setGuests((prev) => [...prev, newRoomGuest]);
+      setShowNewGuest(false);
+    }
   };
 
   const handleRegisteredGuestSelect = async (guest: Guest) => {
@@ -153,8 +169,7 @@ const RoomSellView: React.FC<RoomSellViewProps> = ({ room, onClose, onRoomUpdate
       return;
     }
 
-    /* Oda dolu ise doğrudan API'ye ekle (mevcut reservation'a) */
-    if (isOccupied) {
+    if (guestApiMode) {
       try {
         await roomsApi.addGuest(room.id, guest.id);
         setGuests((prev) => [...prev, {
@@ -162,11 +177,11 @@ const RoomSellView: React.FC<RoomSellViewProps> = ({ room, onClose, onRoomUpdate
           guestName: `${guest.firstName} ${guest.lastName}`,
           phone: guest.phone,
         }]);
+        onRoomUpdate();
       } catch (err: any) {
         Alert.alert('Hata', err.message);
       }
     } else {
-      /* Müsait oda — local state'e ekle, check-in'de API'ye gidecek */
       setGuests((prev) => [...prev, {
         guestId: guest.id,
         guestName: `${guest.firstName} ${guest.lastName}`,
@@ -190,6 +205,10 @@ const RoomSellView: React.FC<RoomSellViewProps> = ({ room, onClose, onRoomUpdate
             } catch (err: any) {
               Alert.alert('Hata', err.message);
             }
+          } else if (isReserved) {
+            /* Rezerve durumda: stay'i kaldırmak için backend remove_guest yok,
+               sadece local'den sil — kullanıcı rezervasyonu iptal etmek isterse "Rezervasyon İptal" var */
+            setGuests((prev) => prev.filter((g) => g.guestId !== guestId));
           } else {
             setGuests((prev) => prev.filter((g) => g.guestId !== guestId));
           }
@@ -201,7 +220,7 @@ const RoomSellView: React.FC<RoomSellViewProps> = ({ room, onClose, onRoomUpdate
   /* ─── Folio ─── */
   const handleFolioAdd = async (data: { category: FolioCategory; description: string; amount: number; paymentMethod?: string }) => {
     if (!room.reservationId) {
-      Alert.alert('Uyarı', 'Folio eklemek için önce check-in yapmalısınız.');
+      Alert.alert('Uyarı', 'Folio eklemek için önce rezervasyon veya check-in yapmalısınız.');
       return;
     }
     try {
@@ -236,6 +255,41 @@ const RoomSellView: React.FC<RoomSellViewProps> = ({ room, onClose, onRoomUpdate
         },
       },
     ]);
+  };
+
+  /* ─── Rezerve Et (check-in olmadan rezervasyon yarat) ─── */
+  const handleReserve = () => {
+    if (guests.length === 0) {
+      Alert.alert('Uyarı', 'Rezervasyon için en az 1 misafir eklemelisiniz.');
+      return;
+    }
+    setShowReservationConfirm(true);
+  };
+
+  const submitReservation = async (checkIn: string, checkOut: string | null) => {
+    setLoading(true);
+    try {
+      await reservationsApi.create({
+        roomId: room.id,
+        guestId: guests[0].guestId,
+        checkIn,
+        checkOut: checkOut || undefined,
+        notes,
+        companyId: selectedCompanyId ?? undefined,
+        staffName: user?.name,
+      });
+      /* Ek misafirler — backend rezerve durumda check_in=None ile ekler */
+      for (let i = 1; i < guests.length; i++) {
+        await roomsApi.addGuest(room.id, guests[i].guestId);
+      }
+      setShowReservationConfirm(false);
+      onRoomUpdate();
+    } catch (err: any) {
+      Alert.alert('Hata', err.message);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
   };
 
   /* ─── Rezervasyon İptal (reserved durumda) ─── */
@@ -661,7 +715,18 @@ const RoomSellView: React.FC<RoomSellViewProps> = ({ room, onClose, onRoomUpdate
               loading={loading}
               style={{ marginBottom: spacing.sm }}
             />
-            {room.reservationStatus === 'reserved' && room.reservationId && (
+            {!isReserved && (
+              <AppButton
+                title="Rezerve Et"
+                onPress={handleReserve}
+                icon="bookmark-outline"
+                variant="secondary"
+                disabled={guests.length === 0}
+                loading={loading}
+                style={{ marginBottom: spacing.sm }}
+              />
+            )}
+            {isReserved && (
               <AppButton
                 title="Rezervasyon İptal"
                 onPress={handleCancelReservation}
@@ -712,6 +777,15 @@ const RoomSellView: React.FC<RoomSellViewProps> = ({ room, onClose, onRoomUpdate
         visible={showFolioAdd}
         onClose={() => setShowFolioAdd(false)}
         onSave={handleFolioAdd}
+      />
+      <ReservationConfirmModal
+        visible={showReservationConfirm}
+        roomNumber={room.number}
+        guests={guests}
+        companyName={selectedCompanyId ? companies.find(c => c.id === selectedCompanyId)?.name : null}
+        notes={notes}
+        onClose={() => setShowReservationConfirm(false)}
+        onConfirm={submitReservation}
       />
     </View>
   );
