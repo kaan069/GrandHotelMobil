@@ -550,6 +550,32 @@ const RoomSellView: React.FC<RoomSellViewProps> = ({ room, onClose, onRoomUpdate
             keyboardType="numeric"
             icon="cash-outline"
           />
+          {nightlyRate && Number(nightlyRate) > 0 && Number(nightlyRate) !== (room.price || 0) && (
+            <AppButton
+              title="Oda Fiyatını Kaydet"
+              variant="outline"
+              icon="save-outline"
+              loading={loading}
+              onPress={async () => {
+                const newPrice = Number(nightlyRate);
+                if (!newPrice || newPrice <= 0) {
+                  Alert.alert('Uyarı', 'Geçerli bir fiyat girin.');
+                  return;
+                }
+                setLoading(true);
+                try {
+                  await roomsApi.update(room.id, { price: newPrice });
+                  Alert.alert('Başarılı', 'Oda fiyatı güncellendi.');
+                  onRoomUpdate();
+                } catch (err: any) {
+                  Alert.alert('Hata', err.message);
+                } finally {
+                  setLoading(false);
+                }
+              }}
+              style={{ marginTop: spacing.sm }}
+            />
+          )}
         </AppCard>
 
         {/* Misafir Yönetimi */}

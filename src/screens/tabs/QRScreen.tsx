@@ -24,6 +24,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { AppButton } from '../../components/common';
 import { colors, spacing, fontSize, borderRadius } from '../../theme';
 import { SHIFTS_STORAGE_KEY } from '../../utils/constants';
+import { apiClient } from '../../services/api';
 import useAuth from '../../hooks/useAuth';
 import type { ShiftEntry } from '../tasks/ShiftsScreen';
 
@@ -194,10 +195,8 @@ const QRScreen: React.FC = () => {
 
     // Backend devam kaydı (offline ise sessizce geç)
     try {
-      const { API_BASE_URL } = require('../../utils/constants');
-      await fetch(`${API_BASE_URL}/staff/attendance/mark/`, {
+      await apiClient('/staff/attendance/mark/', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ staffNumber: user.staffNumber, type: shiftType }),
       });
     } catch {

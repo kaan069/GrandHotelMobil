@@ -52,7 +52,7 @@ import type { Fault } from '../components/tasks/FaultDetailView';
  *   apiClient<Guest[]>('/guests/') → Promise<Guest[]> döner
  *   apiClient<ApiRoom>('/rooms/1/') → Promise<ApiRoom> döner
  */
-async function apiClient<T>(endpoint: string, options?: RequestInit): Promise<T> {
+export async function apiClient<T>(endpoint: string, options?: RequestInit): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`;
 
   /* AsyncStorage'dan hotel ID ve JWT token al */
@@ -699,14 +699,38 @@ export const leavesApi = {
 async function apiMultipart<T>(endpoint: string, formData: FormData, method = 'POST'): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`;
 
+  let hotelId: string | null = null;
+  let token: string | null = null;
+  try {
+    const keys = await AsyncStorage.multiGet([
+      'grandhotel_mobile_hotel_id',
+      'grandhotel_mobile_token',
+    ]);
+    hotelId = keys[0][1];
+    token = keys[1][1];
+  } catch {
+    /* Storage kullanılamıyorsa sessizce geç */
+  }
+
   const response = await fetch(url, {
     method,
     body: formData,
-    // Content-Type header EKLENMEMELİ — fetch otomatik boundary ekler
+    headers: {
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+      ...(hotelId ? { 'X-Hotel-Id': hotelId } : {}),
+      // Content-Type EKLENMEMELİ — fetch boundary'i otomatik ekler
+    },
   });
 
   if (response.status === 204) {
     return undefined as T;
+  }
+
+  if (response.status === 401 && !endpoint.includes('/staff/login')) {
+    const refreshed = await _tryRefreshToken();
+    if (refreshed) {
+      return apiMultipart<T>(endpoint, formData, method);
+    }
   }
 
   if (!response.ok) {

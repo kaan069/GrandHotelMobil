@@ -10,6 +10,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 
 import { AppButton } from '../common';
+import CalendarPicker from '../common/CalendarPicker';
 import { colors, spacing, fontSize, borderRadius } from '../../theme';
 import type { RoomGuest } from '../../utils/types';
 
@@ -23,12 +24,21 @@ interface ReservationConfirmModalProps {
   onConfirm: (checkIn: string, checkOut: string | null) => Promise<void>;
 }
 
-const todayStr = (): string => new Date().toISOString().split('T')[0];
+const todayStr = (): string => {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
 
 const addDays = (dateStr: string, days: number): string => {
   const d = new Date(dateStr + 'T00:00:00');
   d.setDate(d.getDate() + days);
-  return d.toISOString().split('T')[0];
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 };
 
 const formatDateTr = (dateStr: string): string => {
@@ -39,30 +49,18 @@ const formatDateTr = (dateStr: string): string => {
 const ReservationConfirmModal: React.FC<ReservationConfirmModalProps> = ({
   visible, roomNumber, guests, companyName, notes, onClose, onConfirm,
 }) => {
-  const [checkIn, setCheckIn] = useState<string>(todayStr());
+  const checkIn = todayStr();
   const [checkOut, setCheckOut] = useState<string>(addDays(todayStr(), 1));
   const [submitting, setSubmitting] = useState(false);
+  const [calendarOpen, setCalendarOpen] = useState(false);
 
   useEffect(() => {
     if (visible) {
-      setCheckIn(todayStr());
       setCheckOut(addDays(todayStr(), 1));
       setSubmitting(false);
+      setCalendarOpen(false);
     }
   }, [visible]);
-
-  const adjustCheckIn = (days: number) => {
-    const next = addDays(checkIn, days);
-    setCheckIn(next);
-    if (checkOut <= next) {
-      setCheckOut(addDays(next, 1));
-    }
-  };
-
-  const adjustCheckOut = (days: number) => {
-    const next = addDays(checkOut, days);
-    if (next > checkIn) setCheckOut(next);
-  };
 
   const handleConfirm = async () => {
     setSubmitting(true);
@@ -108,30 +106,20 @@ const ReservationConfirmModal: React.FC<ReservationConfirmModalProps> = ({
             ) : null}
 
             <Text style={styles.label}>Giriş Tarihi</Text>
-            <View style={styles.dateRow}>
-              <TouchableOpacity style={styles.dateBtn} onPress={() => adjustCheckIn(-1)}>
-                <Ionicons name="chevron-back" size={20} color={colors.primary} />
-              </TouchableOpacity>
-              <View style={styles.dateDisplay}>
-                <Text style={styles.dateText}>{formatDateTr(checkIn)}</Text>
+            <View style={styles.fixedDateBox}>
+              <Ionicons name="calendar-outline" size={18} color={colors.textSecondary} />
+              <Text style={styles.fixedDateText}>{formatDateTr(checkIn)}</Text>
+              <View style={styles.todayBadge}>
+                <Text style={styles.todayBadgeText}>Bugün</Text>
               </View>
-              <TouchableOpacity style={styles.dateBtn} onPress={() => adjustCheckIn(1)}>
-                <Ionicons name="chevron-forward" size={20} color={colors.primary} />
-              </TouchableOpacity>
             </View>
 
             <Text style={styles.label}>Çıkış Tarihi</Text>
-            <View style={styles.dateRow}>
-              <TouchableOpacity style={styles.dateBtn} onPress={() => adjustCheckOut(-1)}>
-                <Ionicons name="chevron-back" size={20} color={colors.primary} />
-              </TouchableOpacity>
-              <View style={styles.dateDisplay}>
-                <Text style={styles.dateText}>{formatDateTr(checkOut)}</Text>
-              </View>
-              <TouchableOpacity style={styles.dateBtn} onPress={() => adjustCheckOut(1)}>
-                <Ionicons name="chevron-forward" size={20} color={colors.primary} />
-              </TouchableOpacity>
-            </View>
+            <TouchableOpacity style={styles.dateSelector} onPress={() => setCalendarOpen(true)}>
+              <Ionicons name="calendar" size={18} color={colors.primary} />
+              <Text style={styles.dateSelectorText}>{formatDateTr(checkOut)}</Text>
+              <Ionicons name="chevron-down" size={18} color={colors.textSecondary} />
+            </TouchableOpacity>
 
             {notes ? (
               <>
@@ -159,6 +147,15 @@ const ReservationConfirmModal: React.FC<ReservationConfirmModalProps> = ({
               style={{ marginTop: spacing.sm, marginBottom: spacing.lg }}
             />
           </ScrollView>
+
+          <CalendarPicker
+            visible={calendarOpen}
+            selectedDate={checkOut}
+            minDate={addDays(checkIn, 1)}
+            title="Çıkış Tarihi"
+            onSelect={setCheckOut}
+            onClose={() => setCalendarOpen(false)}
+          />
         </View>
       </TouchableOpacity>
     </Modal>
@@ -247,31 +244,47 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     flex: 1,
   },
-  dateRow: {
+  fixedDateBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    marginBottom: spacing.sm,
-  },
-  dateBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: borderRadius.md,
-    backgroundColor: colors.primary + '15',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  dateDisplay: {
-    flex: 1,
-    height: 40,
-    borderRadius: borderRadius.md,
+    gap: 10,
     backgroundColor: colors.surface,
+    borderRadius: borderRadius.md,
+    padding: 14,
     borderWidth: 1,
     borderColor: colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
+    marginBottom: spacing.sm,
   },
-  dateText: {
+  fixedDateText: {
+    flex: 1,
+    fontSize: fontSize.md,
+    fontWeight: '600',
+    color: colors.textPrimary,
+  },
+  todayBadge: {
+    backgroundColor: colors.primary + '15',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: borderRadius.sm,
+  },
+  todayBadgeText: {
+    fontSize: fontSize.xs,
+    color: colors.primary,
+    fontWeight: '700',
+  },
+  dateSelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: colors.primary + '08',
+    borderRadius: borderRadius.md,
+    padding: 14,
+    borderWidth: 1.5,
+    borderColor: colors.primary + '40',
+    marginBottom: spacing.sm,
+  },
+  dateSelectorText: {
+    flex: 1,
     fontSize: fontSize.md,
     fontWeight: '600',
     color: colors.textPrimary,

@@ -27,9 +27,8 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { EmptyState, LoadingState } from '../../components/common';
 import { colors, spacing, fontSize, borderRadius } from '../../theme';
-import { roomsApi, menuApi } from '../../services/api';
+import { roomsApi, menuApi, apiClient } from '../../services/api';
 import type { ApiMenuCategory, ApiMenuItem } from '../../utils/types';
-import { API_BASE_URL } from '../../utils/constants';
 import useAuth from '../../hooks/useAuth';
 
 interface OccupiedRoom {
@@ -145,19 +144,15 @@ const RoomServiceScreen: React.FC<Props> = ({ onClose }) => {
     if (!selectedRoom || cart.length === 0) return;
     setSubmitting(true);
     try {
-      const url = `${API_BASE_URL.replace('/api', '')}/api/restaurant/qr/room/${selectedRoom.roomNumber}/order/`;
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          items: cart.map(c => ({ menuItemId: c.menuItemId, quantity: c.quantity, notes: '' })),
-        }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error((err as Record<string, string>).error || 'Sipariş gönderilemedi');
-      }
-      const result = await res.json();
+      const result = await apiClient<{ tabNo: string; totalAmount: string }>(
+        `/restaurant/qr/room/${selectedRoom.roomNumber}/order/`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            items: cart.map(c => ({ menuItemId: c.menuItemId, quantity: c.quantity, notes: '' })),
+          }),
+        }
+      );
       Alert.alert(
         'Sipariş Gönderildi',
         `Oda ${selectedRoom.roomNumber}\nAdisyon: ${result.tabNo}\nToplam: ${result.totalAmount} ₺\n\nMutfağa iletildi ve folio'ya eklendi.`,

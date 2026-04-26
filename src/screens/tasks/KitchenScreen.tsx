@@ -27,8 +27,7 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { LoadingState, EmptyState } from '../../components/common';
 import { colors, spacing, fontSize, borderRadius } from '../../theme';
-import { serviceAreasApi } from '../../services/api';
-import { API_BASE_URL } from '../../utils/constants';
+import { serviceAreasApi, apiClient } from '../../services/api';
 import type { ApiServiceArea } from '../../utils/types';
 import useRestaurantWebSocket from '../../hooks/useRestaurantWebSocket';
 import useAudioNotification from '../../hooks/useAudioNotification';
@@ -60,21 +59,14 @@ async function fetchKitchenOrders(filters?: { status?: string; serviceAreaId?: n
   if (filters?.status) params.append('status', filters.status);
   if (filters?.serviceAreaId) params.append('serviceAreaId', String(filters.serviceAreaId));
   const qs = params.toString();
-  const url = `${API_BASE_URL}/order-items/${qs ? '?' + qs : ''}`;
-  const res = await fetch(url, { headers: { 'Content-Type': 'application/json' } });
-  if (!res.ok) throw new Error('Siparişler yüklenemedi');
-  return res.json();
+  return apiClient<OrderItem[]>(`/order-items/${qs ? '?' + qs : ''}`);
 }
 
 async function kitchenAction(id: number, action: string, body?: object): Promise<OrderItem> {
-  const url = `${API_BASE_URL}/order-items/${id}/${action}/`;
-  const res = await fetch(url, {
+  return apiClient<OrderItem>(`/order-items/${id}/${action}/`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
     body: body ? JSON.stringify(body) : undefined,
   });
-  if (!res.ok) throw new Error('İşlem başarısız');
-  return res.json();
 }
 
 const getElapsedMinutes = (sentAt: string): number =>
