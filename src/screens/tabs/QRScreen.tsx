@@ -1,17 +1,22 @@
 /**
  * QRScreen - QR Kod Tarayıcı Ekranı
  *
- * Ortadaki QR butonuna basılınca kamera açılır.
- * QR kod okutulunca ilgili aksiyona yönlendirilir.
+ * Akış:
+ *   1. Ekran açıldığında "Taramaya Başla" butonu (kamera kapalı, performans için)
+ *   2. Buton'a basınca kamera açılır
+ *   3. QR okununca → başarı animasyonu (scale + fade) + titreşim
+ *   4. 2 sn sonra animasyon kapanır + kamera kapanır → butona döner
  *
- * Mesai QR formatı: "mesai:giris" veya "mesai:cikis"
- * QR okutulduğunda AsyncStorage'a kayıt eklenir.
+ * Bu yapı:
+ *   - İlk açılışta donmayı önler (kamera lazy mount)
+ *   - Sürekli okumayı engeller (her tarama sonrası kamera kapanır)
+ *   - Race condition'ı önler (useRef ile sync flag)
  *
- * Not: Kamera izni gerektirir (expo-camera).
+ * Mesai QR formatı: "mesai:giris" | "mesai:cikis" | "mesai:grandhotel"
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, Alert, TouchableOpacity, Platform } from 'react-native';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { View, Text, StyleSheet, Alert, TouchableOpacity, Animated, Vibration, ActivityIndicator } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
@@ -40,16 +45,33 @@ interface BarcodeScanResult {
   type?: string;
 }
 
-// NFC mesai tag formatı: "mesai:grandhotel" (NDEF text record)
+interface SuccessInfo {
+  type: 'entry' | 'exit';
+  name: string;
+  time: string;
+}
+
 const MESAI_NFC_PREFIX = 'mesai:';
+const SUCCESS_DISPLAY_MS = 2200;
 
 const QRScreen: React.FC = () => {
   const { user } = useAuth();
   const [permission, requestPermission] = useCameraPermissions();
-  const [scanned, setScanned] = useState<boolean>(false);
   const [mode, setMode] = useState<'qr' | 'nfc'>('qr');
   const [nfcSupported, setNfcSupported] = useState(false);
   const [nfcScanning, setNfcScanning] = useState(false);
+
+  /* Tarama akışı */
+  const [scanning, setScanning] = useState(false);   // kamera açık mı (lazy mount)
+  const [cameraReady, setCameraReady] = useState(false);
+  const [successInfo, setSuccessInfo] = useState<SuccessInfo | null>(null);
+  // useRef: setState async olduğu için race condition'ı önler
+  const handlingRef = useRef(false);
+
+  /* Animasyon değerleri */
+  const successScale = useRef(new Animated.Value(0)).current;
+  const successOpacity = useRef(new Animated.Value(0)).current;
+  const checkRotate = useRef(new Animated.Value(0)).current;
 
   // NFC desteğini kontrol et
   useEffect(() => {
@@ -58,6 +80,58 @@ const QRScreen: React.FC = () => {
       .then((supported: boolean) => setNfcSupported(supported))
       .catch(() => setNfcSupported(false));
   }, []);
+
+  // Cleanup: ekran kaybolursa kamerayı kapat
+  useEffect(() => {
+    return () => {
+      handlingRef.current = false;
+      setScanning(false);
+    };
+  }, []);
+
+  /** Başarı animasyonunu başlat */
+  const playSuccessAnimation = useCallback((info: SuccessInfo) => {
+    setSuccessInfo(info);
+    successScale.setValue(0);
+    successOpacity.setValue(0);
+    checkRotate.setValue(0);
+
+    Animated.parallel([
+      Animated.spring(successScale, {
+        toValue: 1,
+        tension: 80,
+        friction: 6,
+        useNativeDriver: true,
+      }),
+      Animated.timing(successOpacity, {
+        toValue: 1,
+        duration: 220,
+        useNativeDriver: true,
+      }),
+      Animated.timing(checkRotate, {
+        toValue: 1,
+        duration: 500,
+        useNativeDriver: true,
+      }),
+    ]).start();
+
+    // Hafif titreşim
+    Vibration.vibrate(150);
+
+    // Otomatik kapan
+    setTimeout(() => {
+      Animated.timing(successOpacity, {
+        toValue: 0,
+        duration: 250,
+        useNativeDriver: true,
+      }).start(() => {
+        setSuccessInfo(null);
+        setScanning(false);     // kamerayı kapat → butona dön
+        setCameraReady(false);
+        handlingRef.current = false;
+      });
+    }, SUCCESS_DISPLAY_MS);
+  }, [successScale, successOpacity, checkRotate]);
 
   // NFC taramayı başlat
   const startNfcScan = useCallback(async () => {
@@ -75,7 +149,7 @@ const QRScreen: React.FC = () => {
 
         if (lower.startsWith(MESAI_NFC_PREFIX)) {
           const shiftType = await detectShiftType();
-          saveShiftEntry(shiftType);
+          await saveShiftEntry(shiftType);
         } else {
           Alert.alert('NFC Okundu', `Veri: ${text}`, [{ text: 'Tamam' }]);
         }
@@ -97,7 +171,7 @@ const QRScreen: React.FC = () => {
     setNfcScanning(false);
   }, []);
 
-  /** Mesai kaydı ekle */
+  /** Mesai kaydı ekle (Alert YOK — animasyon ile gösterilir) */
   const saveShiftEntry = async (shiftType: 'entry' | 'exit') => {
     if (!user) return;
 
@@ -118,7 +192,7 @@ const QRScreen: React.FC = () => {
       /* Storage hatası */
     }
 
-    // Backend devam kaydı oluştur
+    // Backend devam kaydı (offline ise sessizce geç)
     try {
       const { API_BASE_URL } = require('../../utils/constants');
       await fetch(`${API_BASE_URL}/staff/attendance/mark/`, {
@@ -127,16 +201,11 @@ const QRScreen: React.FC = () => {
         body: JSON.stringify({ staffNumber: user.staffNumber, type: shiftType }),
       });
     } catch {
-      /* Çevrimdışıysa sessizce geç */
+      /* Çevrimdışı */
     }
 
-    const label = shiftType === 'entry' ? 'Giriş' : 'Çıkış';
     const time = new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
-    Alert.alert(
-      `Mesai ${label}`,
-      `${user.name}\n${label} saati: ${time}`,
-      [{ text: 'Tamam', onPress: () => setScanned(false) }]
-    );
+    playSuccessAnimation({ type: shiftType, name: user.name, time });
   };
 
   /** Bugün açık giriş kaydı var mı kontrol et */
@@ -151,7 +220,6 @@ const QRScreen: React.FC = () => {
       );
       const entries = todayShifts.filter((s) => s.type === 'entry').length;
       const exits = todayShifts.filter((s) => s.type === 'exit').length;
-      // Giriş sayısı çıkıştan fazlaysa → açık mesai var → çıkış yap
       return entries > exits ? 'exit' : 'entry';
     } catch {
       return 'entry';
@@ -160,12 +228,12 @@ const QRScreen: React.FC = () => {
 
   /** QR kod okunduğunda */
   const handleBarCodeScanned = async ({ data }: BarcodeScanResult) => {
-    if (scanned) return;
-    setScanned(true);
+    // useRef → race condition fix: state'in batch'ini beklemez
+    if (handlingRef.current) return;
+    handlingRef.current = true;
 
     const lower = data.toLowerCase().trim();
 
-    /* Mesai QR kodları — tek kod veya ayrı giriş/çıkış */
     if (
       lower === 'mesai:grandhotel' ||
       lower === 'mesai:giris' || lower === 'mesai:entry' ||
@@ -177,19 +245,37 @@ const QRScreen: React.FC = () => {
       } else if (lower === 'mesai:cikis' || lower === 'mesai:exit') {
         shiftType = 'exit';
       } else {
-        // Tek QR: otomatik tespit
         shiftType = await detectShiftType();
       }
-      saveShiftEntry(shiftType);
+      await saveShiftEntry(shiftType);
       return;
     }
 
-    /* Genel QR */
+    /* Mesai dışı QR */
     Alert.alert(
       'QR Kod Okundu',
       `Veri: ${data}`,
-      [{ text: 'Tekrar Tara', onPress: () => setScanned(false) }]
+      [{
+        text: 'Tamam',
+        onPress: () => {
+          handlingRef.current = false;
+          setScanning(false);
+          setCameraReady(false);
+        },
+      }]
     );
+  };
+
+  const startScanning = () => {
+    handlingRef.current = false;
+    setSuccessInfo(null);
+    setScanning(true);
+  };
+
+  const stopScanning = () => {
+    handlingRef.current = false;
+    setScanning(false);
+    setCameraReady(false);
   };
 
   /* Kamera izni henüz yüklenmedi */
@@ -221,7 +307,6 @@ const QRScreen: React.FC = () => {
     return (
       <View style={styles.container}>
         <View style={styles.nfcContainer}>
-          {/* Mod seçici */}
           <View style={styles.modeSwitch}>
             <TouchableOpacity style={styles.modeBtn} onPress={() => { stopNfcScan(); setMode('qr'); }}>
               <Ionicons name="qr-code-outline" size={20} color={colors.textSecondary} />
@@ -233,7 +318,6 @@ const QRScreen: React.FC = () => {
             </TouchableOpacity>
           </View>
 
-          {/* NFC animasyon alanı */}
           <View style={styles.nfcIconArea}>
             <View style={[styles.nfcCircle, nfcScanning && styles.nfcCircleActive]}>
               <Ionicons name="radio-outline" size={64} color={nfcScanning ? colors.primary : colors.textDisabled} />
@@ -244,7 +328,6 @@ const QRScreen: React.FC = () => {
             <Text style={styles.hintText}>Telefonunuzu NFC etiketine yaklaştırın</Text>
           </View>
 
-          {/* NFC butonları */}
           {!nfcScanning ? (
             <TouchableOpacity style={styles.nfcStartBtn} onPress={startNfcScan} activeOpacity={0.7}>
               <Ionicons name="radio" size={24} color="#fff" />
@@ -261,38 +344,134 @@ const QRScreen: React.FC = () => {
     );
   }
 
-  // QR modu (varsayılan)
+  /* QR modu — varsayılan
+     scanning=false: ortada büyük "Taramaya Başla" butonu (kamera mount değil → performans)
+     scanning=true:  CameraView mount, taramaya hazır
+     successInfo:    başarı animasyonu (kameranın üstünde)
+  */
   return (
     <View style={styles.container}>
-      <CameraView
-        style={styles.camera}
-        barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
-        onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
-      />
-      <View style={[styles.overlay, { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }]}>
-        {/* NFC destekleniyorsa mod seçici göster */}
-        {nfcSupported && (
-          <View style={[styles.modeSwitch, { position: 'absolute', top: 60 }]}>
-            <TouchableOpacity style={[styles.modeBtn, styles.modeBtnActive]}>
-              <Ionicons name="qr-code-outline" size={20} color="#fff" />
-              <Text style={[styles.modeBtnText, { color: '#fff' }]}>QR</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.modeBtn} onPress={() => setMode('nfc')}>
-              <Ionicons name="radio-outline" size={20} color="rgba(255,255,255,0.7)" />
-              <Text style={[styles.modeBtnText, { color: 'rgba(255,255,255,0.7)' }]}>NFC</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        <View style={styles.scanFrame}>
-          <View style={[styles.corner, styles.topLeft]} />
-          <View style={[styles.corner, styles.topRight]} />
-          <View style={[styles.corner, styles.bottomLeft]} />
-          <View style={[styles.corner, styles.bottomRight]} />
+      {/* Mod seçici (üstte) */}
+      {nfcSupported && !scanning && (
+        <View style={[styles.modeSwitch, styles.modeSwitchTop]}>
+          <TouchableOpacity style={[styles.modeBtn, styles.modeBtnActive]}>
+            <Ionicons name="qr-code-outline" size={20} color="#fff" />
+            <Text style={[styles.modeBtnText, { color: '#fff' }]}>QR</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.modeBtn} onPress={() => setMode('nfc')}>
+            <Ionicons name="radio-outline" size={20} color={colors.textSecondary} />
+            <Text style={styles.modeBtnText}>NFC</Text>
+          </TouchableOpacity>
         </View>
-        <Text style={styles.scanText}>QR kodu çerçeveye yerleştirin</Text>
-        <Text style={styles.hintText}>Mesai QR okutun — otomatik giriş/çıkış</Text>
-      </View>
+      )}
+
+      {!scanning ? (
+        /* Kamera henüz açılmadı — Taramaya Başla butonu */
+        <View style={styles.idleContainer}>
+          <View style={styles.idleIconCircle}>
+            <Ionicons name="qr-code-outline" size={88} color={colors.primary} />
+          </View>
+          <Text style={styles.idleTitle}>Mesai QR Tarayıcı</Text>
+          <Text style={styles.idleSubtitle}>
+            Tarayıcıyı başlatmak için aşağıdaki butona dokunun.
+            QR okunduktan sonra otomatik kapanır.
+          </Text>
+          <TouchableOpacity style={styles.startBtn} onPress={startScanning} activeOpacity={0.8}>
+            <Ionicons name="scan-outline" size={26} color="#fff" />
+            <Text style={styles.startBtnText}>Taramaya Başla</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        /* Kamera açık */
+        <>
+          <CameraView
+            style={styles.camera}
+            barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
+            onBarcodeScanned={handlingRef.current ? undefined : handleBarCodeScanned}
+            onCameraReady={() => setCameraReady(true)}
+          />
+
+          {/* Loading overlay (kamera ısınıyor) */}
+          {!cameraReady && (
+            <View style={[styles.overlay, styles.cameraLoadingOverlay]}>
+              <ActivityIndicator size="large" color={colors.textWhite} />
+              <Text style={styles.scanText}>Kamera başlatılıyor…</Text>
+            </View>
+          )}
+
+          {/* Tarama overlay (kamera hazırsa) */}
+          {cameraReady && !successInfo && (
+            <View style={styles.overlay}>
+              <View style={styles.scanFrame}>
+                <View style={[styles.corner, styles.topLeft]} />
+                <View style={[styles.corner, styles.topRight]} />
+                <View style={[styles.corner, styles.bottomLeft]} />
+                <View style={[styles.corner, styles.bottomRight]} />
+              </View>
+              <Text style={styles.scanText}>QR kodu çerçeveye yerleştirin</Text>
+              <Text style={styles.hintText}>Mesai QR okutun — otomatik giriş/çıkış</Text>
+
+              {/* Vazgeç butonu */}
+              <TouchableOpacity style={styles.cancelBtn} onPress={stopScanning} activeOpacity={0.7}>
+                <Ionicons name="close" size={20} color="#fff" />
+                <Text style={styles.cancelBtnText}>Vazgeç</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {/* Başarı animasyonu */}
+          {successInfo && (
+            <Animated.View
+              style={[
+                styles.overlay,
+                styles.successOverlay,
+                { opacity: successOpacity },
+              ]}
+            >
+              <Animated.View
+                style={[
+                  styles.successCircle,
+                  {
+                    backgroundColor: successInfo.type === 'entry' ? '#16a34a' : '#dc2626',
+                    transform: [{ scale: successScale }],
+                  },
+                ]}
+              >
+                <Animated.View
+                  style={{
+                    transform: [{
+                      rotate: checkRotate.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: ['-90deg', '0deg'],
+                      }),
+                    }],
+                  }}
+                >
+                  <Ionicons
+                    name={successInfo.type === 'entry' ? 'log-in' : 'log-out'}
+                    size={88}
+                    color="#fff"
+                  />
+                </Animated.View>
+              </Animated.View>
+
+              <Animated.Text
+                style={[
+                  styles.successTitle,
+                  { transform: [{ scale: successScale }] },
+                ]}
+              >
+                {successInfo.type === 'entry' ? 'Mesai Girişi' : 'Mesai Çıkışı'}
+              </Animated.Text>
+
+              <Animated.View style={{ transform: [{ scale: successScale }], alignItems: 'center' }}>
+                <Text style={styles.successName}>{successInfo.name}</Text>
+                <Text style={styles.successTime}>{successInfo.time}</Text>
+              </Animated.View>
+            </Animated.View>
+          )}
+        </>
+      )}
     </View>
   );
 };
@@ -303,6 +482,7 @@ const CORNER_WIDTH = 4;
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: colors.background,
   },
   centered: {
     flex: 1,
@@ -321,14 +501,71 @@ const styles = StyleSheet.create({
   permButton: {
     width: 200,
   },
+
+  /* Idle (kamera kapalı) */
+  idleContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.xl,
+  },
+  idleIconCircle: {
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+    backgroundColor: '#eff6ff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: spacing.lg,
+    borderWidth: 2,
+    borderColor: '#bfdbfe',
+  },
+  idleTitle: {
+    fontSize: fontSize.lg,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    marginBottom: spacing.sm,
+  },
+  idleSubtitle: {
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: spacing.xl,
+    lineHeight: 20,
+  },
+  startBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: colors.primary,
+    paddingHorizontal: 36,
+    paddingVertical: 16,
+    borderRadius: borderRadius.full,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+  },
+  startBtnText: {
+    fontSize: fontSize.md,
+    fontWeight: '700',
+    color: '#fff',
+  },
+
+  /* Camera */
   camera: {
     flex: 1,
   },
   overlay: {
-    flex: 1,
+    position: 'absolute',
+    top: 0, left: 0, right: 0, bottom: 0,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: 'rgba(0,0,0,0.4)',
+  },
+  cameraLoadingOverlay: {
+    backgroundColor: 'rgba(0,0,0,0.7)',
   },
   scanFrame: {
     width: 250,
@@ -369,7 +606,61 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
     textAlign: 'center',
   },
-  // NFC stiller
+  cancelBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(220, 38, 38, 0.9)',
+    paddingHorizontal: 22,
+    paddingVertical: 10,
+    borderRadius: borderRadius.full,
+    marginTop: 32,
+  },
+  cancelBtnText: {
+    color: '#fff',
+    fontSize: fontSize.sm,
+    fontWeight: '600',
+  },
+
+  /* Başarı animasyonu */
+  successOverlay: {
+    backgroundColor: 'rgba(0,0,0,0.85)',
+  },
+  successCircle: {
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: spacing.lg,
+    elevation: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+  },
+  successTitle: {
+    color: '#fff',
+    fontSize: 26,
+    fontWeight: '800',
+    marginBottom: spacing.sm,
+    letterSpacing: 1,
+  },
+  successName: {
+    color: '#fff',
+    fontSize: fontSize.md,
+    fontWeight: '600',
+    opacity: 0.9,
+  },
+  successTime: {
+    color: '#fff',
+    fontSize: 32,
+    fontWeight: '700',
+    marginTop: 4,
+    letterSpacing: 2,
+  },
+
+  /* NFC stiller */
   nfcContainer: {
     flex: 1,
     backgroundColor: colors.background,
@@ -379,10 +670,16 @@ const styles = StyleSheet.create({
   },
   modeSwitch: {
     flexDirection: 'row',
-    backgroundColor: 'rgba(0,0,0,0.2)',
+    backgroundColor: 'rgba(0,0,0,0.08)',
     borderRadius: borderRadius.full,
     padding: 4,
     gap: 4,
+  },
+  modeSwitchTop: {
+    position: 'absolute',
+    top: 60,
+    alignSelf: 'center',
+    zIndex: 10,
   },
   modeBtn: {
     flexDirection: 'row',

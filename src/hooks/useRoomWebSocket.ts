@@ -36,10 +36,19 @@ export default function useRoomWebSocket({ onRoomUpdate, enabled = true }: UseRo
   const onRoomUpdateRef = useRef(onRoomUpdate);
   onRoomUpdateRef.current = onRoomUpdate;
 
-  const connect = useCallback(() => {
+  const connect = useCallback(async () => {
     if (!enabled) return;
 
-    const ws = new WebSocket(WS_URL);
+    // Multi-tenant: hotel_id query param zorunlu (backend reddediyor)
+    const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+    const hotelId = await AsyncStorage.getItem('grandhotel_mobile_hotel_id');
+    if (!hotelId) {
+      console.warn('[WS] hotel_id yok, bağlantı atlandı');
+      return;
+    }
+    const url = `${WS_URL}?hotel_id=${encodeURIComponent(hotelId)}`;
+
+    const ws = new WebSocket(url);
     wsRef.current = ws;
 
     ws.onopen = () => {

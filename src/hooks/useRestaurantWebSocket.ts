@@ -70,13 +70,21 @@ export default function useRestaurantWebSocket({
   onTableUpdateRef.current = onTableUpdate;
   onCashierUpdateRef.current = onCashierUpdate;
 
-  const connect = useCallback(() => {
+  const connect = useCallback(async () => {
     if (!enabled) return;
 
-    let url = WS_BASE;
-    if (groups && groups.length > 0) {
-      url += `?groups=${groups.join(',')}`;
+    // Multi-tenant: hotel_id query param zorunlu (backend reddediyor)
+    const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+    const hotelId = await AsyncStorage.getItem('grandhotel_mobile_hotel_id');
+    if (!hotelId) {
+      console.warn('[WS Restaurant] hotel_id yok, bağlantı atlandı');
+      return;
     }
+    const params = new URLSearchParams({ hotel_id: hotelId });
+    if (groups && groups.length > 0) {
+      params.set('groups', groups.join(','));
+    }
+    const url = `${WS_BASE}?${params.toString()}`;
 
     const ws = new WebSocket(url);
     wsRef.current = ws;
