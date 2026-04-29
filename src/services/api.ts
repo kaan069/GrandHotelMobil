@@ -694,6 +694,26 @@ export const leavesApi = {
     apiClient<ApiLeave>(`/leaves/${id}/cancel/`, { method: 'POST' }),
 };
 
+/* ==================== ATTENDANCE (MESAİ) API ==================== */
+
+export interface ApiAttendanceLog {
+  date: string;
+  status: 'present' | 'absent' | 'leave' | 'day_off' | string;
+  checkInTime: string | null;
+  checkOutTime: string | null;
+  workedHours: string | null;
+}
+
+export const attendanceApi = {
+  getForEmployee: (employeeId: number, dateFrom?: string, dateTo?: string) => {
+    const params = new URLSearchParams();
+    if (dateFrom) params.append('dateFrom', dateFrom);
+    if (dateTo) params.append('dateTo', dateTo);
+    const qs = params.toString();
+    return apiClient<ApiAttendanceLog[]>(`/staff/${employeeId}/attendance/${qs ? '?' + qs : ''}`);
+  },
+};
+
 /* ==================== MULTIPART UPLOAD HELPER ==================== */
 
 async function apiMultipart<T>(endpoint: string, formData: FormData, method = 'POST'): Promise<T> {

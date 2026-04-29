@@ -23,8 +23,8 @@ import { AppCard, StatusChip } from '../../components/common';
 import { colors, spacing, fontSize, borderRadius } from '../../theme';
 import { ROLE_LABELS } from '../../utils/constants';
 import { getYearsOfService } from '../../utils/leaveCalculator';
-import { staffApi, leavesApi } from '../../services/api';
-import type { ApiEmployee, ApiLeave } from '../../services/api';
+import { staffApi, leavesApi, attendanceApi } from '../../services/api';
+import type { ApiEmployee, ApiLeave, ApiAttendanceLog } from '../../services/api';
 import useAuth from '../../hooks/useAuth';
 import EmployeeAddModal from './EmployeeAddModal';
 import LeaveGrantModal from '../../components/employees/LeaveGrantModal';
@@ -43,6 +43,7 @@ const StaffScreen: React.FC<StaffScreenProps> = ({ onClose }) => {
   const [editingEmployee, setEditingEmployee] = useState<ApiEmployee | null>(null);
   const [leaveModalEmployee, setLeaveModalEmployee] = useState<ApiEmployee | null>(null);
   const [employeeLeaves, setEmployeeLeaves] = useState<Record<number, ApiLeave[]>>({});
+  const [employeeAttendance, setEmployeeAttendance] = useState<Record<number, ApiAttendanceLog[]>>({});
 
   /** Maaşı Türk locale'inde biçimle */
   const fmtSalary = (val: number | string | null | undefined) => {
@@ -150,12 +151,24 @@ const StaffScreen: React.FC<StaffScreenProps> = ({ onClose }) => {
     }
   };
 
-  /** Eleman kartı genişletme — izinleri de çek */
+  /** Eleman genişletildiğinde mesai geçmişini çek */
+  const fetchAttendance = async (empId: number) => {
+    try {
+      const logs = await attendanceApi.getForEmployee(empId);
+      logs.sort((a, b) => b.date.localeCompare(a.date));
+      setEmployeeAttendance((prev) => ({ ...prev, [empId]: logs }));
+    } catch {
+      // Sessiz hata
+    }
+  };
+
+  /** Eleman kartı genişletme — izinleri ve mesai kayıtlarını da çek */
   const handleExpand = (empId: number) => {
     const isExpanding = expandedId !== empId;
     setExpandedId(isExpanding ? empId : null);
-    if (isExpanding && !employeeLeaves[empId]) {
-      fetchLeaves(empId);
+    if (isExpanding) {
+      if (!employeeLeaves[empId]) fetchLeaves(empId);
+      if (!employeeAttendance[empId]) fetchAttendance(empId);
     }
   };
 
@@ -211,6 +224,24 @@ const StaffScreen: React.FC<StaffScreenProps> = ({ onClose }) => {
 
   const LEAVE_STATUS_LABELS: Record<string, string> = {
     approved: 'Onaylı', pending: 'Beklemede', cancelled: 'İptal', rejected: 'Reddedildi',
+  };
+
+  const ATTENDANCE_STATUS_LABELS: Record<string, string> = {
+    present: 'Geldi', absent: 'Gelmedi', leave: 'İzinli', day_off: 'Hafta Tatili',
+  };
+  const ATTENDANCE_STATUS_COLORS: Record<string, string> = {
+    present: '#22C55E', absent: '#EF4444', leave: '#3B82F6', day_off: '#94A3B8',
+  };
+
+  const formatHm = (t: string | null): string => {
+    if (!t) return '--:--';
+    const parts = t.split(':');
+    return parts.length >= 2 ? `${parts[0]}:${parts[1]}` : t;
+  };
+
+  const formatDateShort = (iso: string): string => {
+    const d = new Date(iso + 'T00:00:00');
+    return `${d.getDate().toString().padStart(2, '0')}.${(d.getMonth() + 1).toString().padStart(2, '0')}`;
   };
 
   if (loading) {
@@ -348,6 +379,69 @@ const StaffScreen: React.FC<StaffScreenProps> = ({ onClose }) => {
                     ) : (
                       <Text style={styles.detailText}>Henüz 1 yılını doldurmadı</Text>
                     )}
+
+                    {/* Mesai Kayıtları */}
+                    {(() => {
+                      const logs = employeeAttendance[item.id];
+                      if (logs === undefined) {
+                        return (
+                          <>
+                            <Text style={styles.detailTitle}>Mesai Kayıtları</Text>
+                            <ActivityIndicator size="small" color={colors.primary} style={{ marginVertical: 8 }} />
+                          </>
+                        );
+                      }
+                      const yyyymm = new Date().toISOString().slice(0, 7);
+                      const monthLogs = logs.filter((l) => l.date.startsWith(yyyymm));
+                      const monthPresentDays = monthLogs.filter((l) => l.status === 'present').length;
+                      const monthTotalHours = monthLogs.reduce((s, l) => s + (l.workedHours ? Number(l.workedHours) : 0), 0);
+                      return (
+                        <>
+                          <Text style={styles.detailTitle}>Mesai Kayıtları (Bu Ay)</Text>
+                          <View style={styles.attendanceSummary}>
+                            <View style={styles.attendanceSummaryItem}>
+                              <Text style={styles.attendanceSummaryValue}>{monthPresentDays}</Text>
+                              <Text style={styles.attendanceSummaryLabel}>Gün</Text>
+                            </View>
+                            <View style={styles.attendanceSummaryDivider} />
+                            <View style={styles.attendanceSummaryItem}>
+                              <Text style={styles.attendanceSummaryValue}>{monthTotalHours.toFixed(1)}</Text>
+                              <Text style={styles.attendanceSummaryLabel}>Saat</Text>
+                            </View>
+                          </View>
+                          {logs.length > 0 ? (
+                            <View style={styles.attendanceList}>
+                              {logs.slice(0, 30).map((log) => {
+                                const statusColor = ATTENDANCE_STATUS_COLORS[log.status] || colors.textSecondary;
+                                return (
+                                  <View key={log.date} style={styles.attendanceRow}>
+                                    <Text style={styles.attendanceDate}>{formatDateShort(log.date)}</Text>
+                                    <View style={[styles.attendanceStatusBadge, { backgroundColor: statusColor + '20' }]}>
+                                      <Text style={[styles.attendanceStatusText, { color: statusColor }]}>
+                                        {ATTENDANCE_STATUS_LABELS[log.status] || log.status}
+                                      </Text>
+                                    </View>
+                                    <View style={styles.attendanceTimes}>
+                                      <Ionicons name="log-in-outline" size={13} color="#22C55E" />
+                                      <Text style={styles.attendanceTime}>{formatHm(log.checkInTime)}</Text>
+                                      <Ionicons name="log-out-outline" size={13} color="#EF4444" style={{ marginLeft: 6 }} />
+                                      <Text style={styles.attendanceTime}>{formatHm(log.checkOutTime)}</Text>
+                                    </View>
+                                    <Text style={styles.attendanceHours}>
+                                      {log.workedHours ? `${Number(log.workedHours).toFixed(1)} sa` : '-'}
+                                    </Text>
+                                  </View>
+                                );
+                              })}
+                            </View>
+                          ) : (
+                            <Text style={[styles.detailText, { color: colors.textSecondary, fontStyle: 'italic' }]}>
+                              Henüz mesai kaydı yok
+                            </Text>
+                          )}
+                        </>
+                      );
+                    })()}
 
                     {/* İzin Geçmişi */}
                     {employeeLeaves[item.id] && employeeLeaves[item.id].length > 0 && (
@@ -523,6 +617,74 @@ const styles = StyleSheet.create({
   },
   leaveHistoryType: { fontSize: fontSize.sm, fontWeight: '600', color: colors.textPrimary },
   leaveHistoryNote: { fontSize: fontSize.xs, color: colors.textSecondary, marginTop: 2 },
+  // Mesai kayıtları
+  attendanceSummary: {
+    flexDirection: 'row',
+    backgroundColor: colors.primary + '10',
+    borderRadius: borderRadius.md,
+    paddingVertical: spacing.sm,
+    marginVertical: 4,
+  },
+  attendanceSummaryItem: { flex: 1, alignItems: 'center' },
+  attendanceSummaryValue: {
+    fontSize: fontSize.lg, fontWeight: '800', color: colors.primary,
+  },
+  attendanceSummaryLabel: {
+    fontSize: fontSize.xs, color: colors.textSecondary, marginTop: 2,
+  },
+  attendanceSummaryDivider: {
+    width: 1, backgroundColor: colors.border, marginVertical: 4,
+  },
+  attendanceList: {
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.md,
+    paddingHorizontal: spacing.sm,
+    marginTop: 4,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  attendanceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+    gap: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.divider,
+  },
+  attendanceDate: {
+    fontSize: fontSize.sm,
+    fontWeight: '600',
+    color: colors.textPrimary,
+    width: 44,
+    fontVariantNumeric: 'tabular-nums',
+  },
+  attendanceStatusBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: borderRadius.sm,
+  },
+  attendanceStatusText: {
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  attendanceTimes: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
+  attendanceTime: {
+    fontSize: fontSize.xs,
+    fontWeight: '600',
+    color: colors.textPrimary,
+    fontVariantNumeric: 'tabular-nums',
+  },
+  attendanceHours: {
+    fontSize: fontSize.xs,
+    fontWeight: '700',
+    color: colors.textSecondary,
+    fontVariantNumeric: 'tabular-nums',
+  },
 });
 
 export default StaffScreen;
