@@ -26,6 +26,8 @@ import { AppInput, AppButton } from '../common';
 import { colors, spacing, fontSize, borderRadius } from '../../theme';
 import { Guest } from '../../utils/types';
 import { guestsApi } from '../../services/api';
+import MrzScanModal from './MrzScanModal';
+import type { MrzData } from '../../utils/mrzParser';
 
 interface NewGuestModalProps {
   visible: boolean;
@@ -46,21 +48,25 @@ const NewGuestModal: React.FC<NewGuestModalProps> = ({ visible, onClose, onSave 
   const [tcStatus, setTcStatus] = useState<'idle' | 'checking' | 'found' | 'blocked' | 'new'>('idle');
   const [foundGuestId, setFoundGuestId] = useState<number | null>(null);
 
+  // MRZ kamera tarayıcı
+  const [showMrzScan, setShowMrzScan] = useState(false);
+
   const resetForm = () => {
     setTcNo(''); setFirstName(''); setLastName('');
     setPhone(''); setEmail('');
     setErrors({}); setTcStatus('idle'); setFoundGuestId(null);
   };
 
-  // TC girilip alan dışına çıkınca kontrol et
-  const handleTcBlur = useCallback(async () => {
-    if (tcNo.trim().length !== 11) {
+  /* TC kontrolünü hem onBlur hem MRZ scan sonrası çağırabilmek için tcOverride parametresi */
+  const handleTcBlur = useCallback(async (tcOverride?: string) => {
+    const tc = (tcOverride ?? tcNo).trim();
+    if (tc.length !== 11) {
       setTcStatus('idle');
       return;
     }
     setTcStatus('checking');
     try {
-      const result = await guestsApi.checkTc(tcNo.trim());
+      const result = await guestsApi.checkTc(tc);
       if (result.found && result.guest) {
         setFirstName(result.guest.firstName);
         setLastName(result.guest.lastName);
@@ -76,6 +82,20 @@ const NewGuestModal: React.FC<NewGuestModalProps> = ({ visible, onClose, onSave 
       setTcStatus('idle');
     }
   }, [tcNo]);
+
+  /* MRZ kameradan başarılı okuma → form alanlarını doldur, varsa TC kontrolünü tetikle */
+  const handleMrzScan = useCallback((data: MrzData) => {
+    if (data.tcNo) {
+      setTcNo(data.tcNo);
+    }
+    if (data.firstName) setFirstName(data.firstName);
+    if (data.lastName) setLastName(data.lastName);
+    setErrors({});
+    /* TC varsa otomatik kontrole gönder (kayıtlı müşteri ise bilgileri override eder) */
+    if (data.tcNo && data.tcNo.length === 11) {
+      handleTcBlur(data.tcNo);
+    }
+  }, [handleTcBlur]);
 
   const handleSave = async () => {
     if (tcStatus === 'blocked') {
@@ -122,7 +142,10 @@ const NewGuestModal: React.FC<NewGuestModalProps> = ({ visible, onClose, onSave 
               <Ionicons name="close" size={24} color={colors.textPrimary} />
             </TouchableOpacity>
             <Text style={styles.title}>Yeni Misafir</Text>
-            <View style={{ width: 24 }} />
+            <TouchableOpacity onPress={() => setShowMrzScan(true)} style={styles.mrzBtn}>
+              <Ionicons name="scan-outline" size={18} color="#fff" />
+              <Text style={styles.mrzBtnText}>MRZ Tara</Text>
+            </TouchableOpacity>
           </View>
 
           {/* Blokeli uyarısı */}
@@ -152,7 +175,7 @@ const NewGuestModal: React.FC<NewGuestModalProps> = ({ visible, onClose, onSave 
                   if (errors.tcNo) setErrors((p) => ({ ...p, tcNo: '' }));
                   if (v.length < 11) { setTcStatus('idle'); setFoundGuestId(null); }
                 }}
-                onBlur={handleTcBlur}
+                onBlur={() => handleTcBlur()}
                 placeholder="11 haneli TC kimlik numarası"
                 keyboardType="number-pad"
                 maxLength={11}
@@ -209,6 +232,12 @@ const NewGuestModal: React.FC<NewGuestModalProps> = ({ visible, onClose, onSave 
           </ScrollView>
         </View>
       </KeyboardAvoidingView>
+
+      <MrzScanModal
+        visible={showMrzScan}
+        onClose={() => setShowMrzScan(false)}
+        onScan={handleMrzScan}
+      />
     </Modal>
   );
 };
@@ -227,6 +256,8 @@ const styles = StyleSheet.create({
   tcCheckingText: { fontSize: fontSize.xs, color: colors.textSecondary },
   tcNew: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: -8, marginBottom: 8, marginLeft: 4 },
   tcNewText: { fontSize: fontSize.xs, color: '#22c55e', fontWeight: '600' },
+  mrzBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.primary, paddingHorizontal: 10, paddingVertical: 6, borderRadius: borderRadius.md },
+  mrzBtnText: { color: '#fff', fontSize: fontSize.xs, fontWeight: '700' },
 });
 
 export default NewGuestModal;

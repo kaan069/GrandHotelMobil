@@ -12,6 +12,7 @@ import {
   Text,
   StyleSheet,
   FlatList,
+  ScrollView,
   TouchableOpacity,
   RefreshControl,
   Alert,
@@ -89,6 +90,7 @@ interface FilterOption {
 const FILTERS: FilterOption[] = [
   { value: 'all', label: 'Tümü' },
   { value: ROOM_STATUS.AVAILABLE, label: 'Müsait' },
+  { value: 'reserved', label: 'Rezerve' },
   { value: ROOM_STATUS.OCCUPIED, label: 'Dolu' },
   { value: ROOM_STATUS.DIRTY, label: 'Kirli' },
   { value: ROOM_STATUS.MAINTENANCE, label: 'Bakımda' },
@@ -98,6 +100,7 @@ const FILTERS: FilterOption[] = [
 const getStatusIcon = (status: string): string => {
   switch (status) {
     case ROOM_STATUS.AVAILABLE: return 'checkmark-circle';
+    case 'reserved': return 'bookmark';
     case ROOM_STATUS.OCCUPIED: return 'person';
     case ROOM_STATUS.DIRTY: return 'alert-circle';
     case ROOM_STATUS.MAINTENANCE: return 'construct';
@@ -163,13 +166,21 @@ const RoomStatusScreen: React.FC<RoomStatusScreenProps> = ({ onClose }) => {
   /* Odaları filtrele */
   /* liveRooms kullan — API + WebSocket birleşimi */
   const rooms = liveRooms;
-  const filteredRooms = filter === 'all'
-    ? rooms
-    : rooms.filter((r) => r.status === filter);
+  const isRoomReserved = (r: typeof rooms[number]) =>
+    r.status === ROOM_STATUS.AVAILABLE && r.reservationStatus === 'reserved';
+
+  const filteredRooms = (() => {
+    if (filter === 'all') return rooms;
+    if (filter === 'reserved') return rooms.filter(isRoomReserved);
+    if (filter === ROOM_STATUS.AVAILABLE) return rooms.filter((r) => r.status === ROOM_STATUS.AVAILABLE && !isRoomReserved(r));
+    return rooms.filter((r) => r.status === filter);
+  })();
 
   /* Özet sayılar */
+  const reservedCount = rooms.filter(isRoomReserved).length;
   const summary = {
-    available: rooms.filter((r) => r.status === ROOM_STATUS.AVAILABLE).length,
+    available: rooms.filter((r) => r.status === ROOM_STATUS.AVAILABLE).length - reservedCount,
+    reserved: reservedCount,
     occupied: rooms.filter((r) => r.status === ROOM_STATUS.OCCUPIED).length,
     dirty: rooms.filter((r) => r.status === ROOM_STATUS.DIRTY).length,
     maintenance: rooms.filter((r) => r.status === ROOM_STATUS.MAINTENANCE).length,
@@ -220,10 +231,18 @@ const RoomStatusScreen: React.FC<RoomStatusScreenProps> = ({ onClose }) => {
       </View>
 
       {/* Özet Kartları */}
-      <View style={styles.summaryRow}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.summaryRow}
+      >
         <View style={[styles.summaryBox, { backgroundColor: ROOM_STATUS_COLORS[ROOM_STATUS.AVAILABLE] + '20' }]}>
           <Text style={[styles.summaryNum, { color: ROOM_STATUS_COLORS[ROOM_STATUS.AVAILABLE] }]}>{summary.available}</Text>
           <Text style={styles.summaryLabel}>Müsait</Text>
+        </View>
+        <View style={[styles.summaryBox, { backgroundColor: ROOM_STATUS_COLORS['reserved'] + '20' }]}>
+          <Text style={[styles.summaryNum, { color: ROOM_STATUS_COLORS['reserved'] }]}>{summary.reserved}</Text>
+          <Text style={styles.summaryLabel}>Rezerve</Text>
         </View>
         <View style={[styles.summaryBox, { backgroundColor: ROOM_STATUS_COLORS[ROOM_STATUS.OCCUPIED] + '20' }]}>
           <Text style={[styles.summaryNum, { color: ROOM_STATUS_COLORS[ROOM_STATUS.OCCUPIED] }]}>{summary.occupied}</Text>
@@ -241,7 +260,7 @@ const RoomStatusScreen: React.FC<RoomStatusScreenProps> = ({ onClose }) => {
           <Text style={[styles.summaryNum, { color: ROOM_STATUS_COLORS[ROOM_STATUS.BLOCKED] }]}>{summary.blocked}</Text>
           <Text style={styles.summaryLabel}>Bloke</Text>
         </View>
-      </View>
+      </ScrollView>
 
       {/* Filtreler */}
       <View style={styles.filterRow}>
@@ -270,12 +289,9 @@ const RoomStatusScreen: React.FC<RoomStatusScreenProps> = ({ onClose }) => {
         }
         ListEmptyComponent={<EmptyState icon="bed-outline" title="Oda bulunamadı" />}
         renderItem={({ item: room }) => {
-          /* "Rezerve" sadece bugün girişli rezervasyonlarda gösterilir */
-          const today = new Date().toISOString().split('T')[0];
-          const checkInDate = room.reservationCheckIn ? room.reservationCheckIn.split('T')[0] : null;
+          /* Rezerve: müsait oda ama bugün/yarın için aktif rezervasyon var */
           const isReserved = room.status === ROOM_STATUS.AVAILABLE
-            && room.reservationStatus === 'reserved'
-            && checkInDate === today;
+            && room.reservationStatus === 'reserved';
           const isClean = room.status === ROOM_STATUS.AVAILABLE && !isReserved;
           const isDirty = room.status === ROOM_STATUS.DIRTY;
           const displayColor = isReserved ? ROOM_STATUS_COLORS['reserved'] : ROOM_STATUS_COLORS[room.status];
@@ -405,9 +421,10 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
   },
   summaryBox: {
-    flex: 1,
+    minWidth: 64,
     alignItems: 'center',
     paddingVertical: 8,
+    paddingHorizontal: 10,
     borderRadius: borderRadius.md,
   },
   summaryNum: {
