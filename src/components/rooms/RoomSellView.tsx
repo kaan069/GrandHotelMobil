@@ -32,8 +32,10 @@ import {
   FOLIO_CATEGORY_LABELS,
 } from '../../utils/constants';
 import useAuth from '../../hooks/useAuth';
+import useHotelSettings from '../../hooks/useHotelSettings';
 import { roomsApi, foliosApi, reservationsApi, companiesApi } from '../../services/api';
 import type { RoomGuest, ApiFolioItem, Guest, FolioCategory, Company } from '../../utils/types';
+import { calcFolioTotals, isFolioDeductionRow } from '../../utils/folio';
 
 import NewGuestModal from './NewGuestModal';
 import GuestSearchModal from './GuestSearchModal';
@@ -77,12 +79,15 @@ const formatCurrency = (amount: number): string => {
 
 const RoomSellView: React.FC<RoomSellViewProps> = ({ room, onClose, onRoomUpdate }) => {
   const { user } = useAuth();
+  const { settings: hotelSettings } = useHotelSettings();
 
   /* State */
   const [guests, setGuests] = useState<RoomGuest[]>(room.guests || []);
   const [folios, setFolios] = useState<ApiFolioItem[]>([]);
   const [notes, setNotes] = useState(room.reservationNotes || '');
   const [loading, setLoading] = useState(false);
+  /* Walk-in akışı: boş odada Folio Ekle basılınca anlık reservation oluşur, ID burada tutulur */
+  const [pendingReservationId, setPendingReservationId] = useState<number | null>(null);
 
   /* Firma & Fiyat */
   const [companies, setCompanies] = useState<Company[]>([]);
@@ -115,30 +120,30 @@ const RoomSellView: React.FC<RoomSellViewProps> = ({ room, onClose, onRoomUpdate
   /* Misafir ekleme/çıkarma direkt API'ye gitmeli mi? (occupied veya reserved) */
   const guestApiMode = isOccupied || isReserved;
 
-  /* Folio yükle — occupied odada reservation var */
+  /* Aktif reservation ID — gerçek (parent'tan) veya walk-in akışında oluşturulan */
+  const activeReservationId = room.reservationId ?? pendingReservationId;
+
+  /* Folio yükle — reservation varsa (race condition korumalı) */
   useEffect(() => {
-    if (room.reservationId) {
-      foliosApi.getForReservation(room.reservationId)
-        .then(setFolios)
-        .catch(() => {});
+    if (!activeReservationId) {
+      setFolios([]);
+      return;
     }
-  }, [room.reservationId]);
+    let cancelled = false;
+    foliosApi.getForReservation(activeReservationId)
+      .then((data) => { if (!cancelled) setFolios(data); })
+      .catch(() => { if (!cancelled) setFolios([]); });
+    return () => { cancelled = true; };
+  }, [activeReservationId]);
 
-  /* Folio hesaplamaları */
+  /* Folio hesaplamaları — utils/folio.ts (tek doğruluk kaynağı) */
   const parseAmount = (a: number | string) => typeof a === 'string' ? parseFloat(a) : a;
-
-  const folioCharges = folios
-    .filter((f) => f.category !== 'payment' && f.category !== 'discount')
-    .reduce((sum, f) => sum + parseAmount(f.amount), 0);
-  const folioDiscounts = folios
-    .filter((f) => f.category === 'discount')
-    .reduce((sum, f) => sum + parseAmount(f.amount), 0);
-  const folioPayments = folios
-    .filter((f) => f.category === 'payment')
-    .reduce((sum, f) => sum + parseAmount(f.amount), 0);
-  const folioTotal = folioCharges - folioDiscounts;
-  const folioBalance = folioTotal - folioPayments;
-  const hasPayment = folios.some((f) => f.category === 'payment');
+  const folioTotals = calcFolioTotals(folios);
+  const folioCharges = folioTotals.charges;
+  const folioDiscounts = folioTotals.discounts;
+  const folioPayments = folioTotals.payments;
+  const folioTotal = folioTotals.total;
+  const folioBalance = folioTotals.balance;
 
   /* ─── Misafir ekleme (rezerve/dolu ise API, müsait ise local state) ─── */
   const handleNewGuestSave = async (guest: Guest) => {
@@ -217,15 +222,65 @@ const RoomSellView: React.FC<RoomSellViewProps> = ({ room, onClose, onRoomUpdate
     ]);
   };
 
-  /* ─── Folio ─── */
+  /* ─── Folio Ekle butonuna basıldı: reservation yoksa otomatik walk-in dialog'u çıkar ─── */
+  const handleFolioAddPress = () => {
+    if (activeReservationId) {
+      setShowFolioAdd(true);
+      return;
+    }
+    if (guests.length === 0) {
+      Alert.alert(
+        'Misafir Gerekli',
+        'Folio eklemek için önce odaya misafir eklemelisiniz.',
+      );
+      return;
+    }
+    Alert.alert(
+      'Hızlı Rezervasyon',
+      'Folio eklemek için bu odaya hızlı bir rezervasyon oluşturulacak. Check-in sonra "Check-in Yap" ile tamamlanabilir.',
+      [
+        { text: 'İptal', style: 'cancel' },
+        {
+          text: 'Oluştur',
+          onPress: async () => {
+            setLoading(true);
+            try {
+              const today = new Date().toISOString().split('T')[0];
+              const created = await reservationsApi.create({
+                roomId: room.id,
+                guestId: guests[0].guestId,
+                checkIn: today,
+                notes,
+                companyId: selectedCompanyId ?? undefined,
+                staffName: user?.name,
+              });
+              for (let i = 1; i < guests.length; i++) {
+                try { await roomsApi.addGuest(room.id, guests[i].guestId); } catch { /* misafir ekleme hatasi folio akisini bozmasin */ }
+              }
+              setPendingReservationId((created as { id: number }).id);
+              onRoomUpdate();
+              setShowFolioAdd(true);
+            } catch (err: any) {
+              Alert.alert('Hata', err.message || 'Rezervasyon oluşturulamadı');
+            } finally {
+              setLoading(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  /* ─── Folio kalemi oluştur (modal kaydet sonrası) ─── */
   const handleFolioAdd = async (data: { category: FolioCategory; description: string; amount: number; paymentMethod?: string }) => {
-    if (!room.reservationId) {
-      Alert.alert('Uyarı', 'Folio eklemek için önce rezervasyon veya check-in yapmalısınız.');
+    const rid = activeReservationId;
+    if (!rid) {
+      Alert.alert('Uyarı', 'Aktif rezervasyon yok.');
       return;
     }
     try {
       const folio = await foliosApi.create({
-        reservationId: room.reservationId,
+        reservationId: rid,
         category: data.category,
         description: data.description,
         amount: data.amount,
@@ -327,6 +382,21 @@ const RoomSellView: React.FC<RoomSellViewProps> = ({ room, onClose, onRoomUpdate
       return;
     }
 
+    /* ─── Pre-flight: Check-in ödeme politikası ───
+     * Web ile aynı kural: switch açıksa bakiyesi olan misafir check-in olamaz.
+     * Şirket muafiyeti varsa (switch + firma seçili) atla.
+     * Backend de aynı kontrolü yapıyor; bu sadece anlık UX uyarısı. */
+    if (hotelSettings?.requirePaymentAtCheckin) {
+      const isCompanyExempt = !!(hotelSettings.companyExemptFromCheckinPayment && selectedCompanyId);
+      if (!isCompanyExempt && folioBalance > 0) {
+        Alert.alert(
+          'Ödeme Gerekli',
+          `Otel politikası gereği ödeme alınmadan check-in yapılamaz.\n\nBakiye: ${formatCurrency(folioBalance)}\n\nÖnce folio üzerinden ödeme alın.`,
+        );
+        return;
+      }
+    }
+
     const message = isReserved
       ? `Oda ${room.number} — Rezervasyon sahibi: ${room.reservationOwnerName}\n\nCheck-in yapılsın mı?`
       : `Oda ${room.number} için check-in yapılsın mı?\n\nMisafir: ${guests.map((g) => g.guestName).join(', ')}`;
@@ -374,55 +444,89 @@ const RoomSellView: React.FC<RoomSellViewProps> = ({ room, onClose, onRoomUpdate
     );
   };
 
-  /* ─── Check-out ─── */
-  const handleCheckOut = (force = false) => {
-    // Ön-kontrol: folio'da hiç ödeme yoksa ve force değilse → uyar
-    if (!force && !hasPayment) {
+  /* ─── Check-out ───
+   * Backend artık eksik room_charge'i kendisi yazıyor (gün ortası çıkışta otomatik).
+   * Mobile sadece şirket cariye yansıtma + force kontrolünü yönetir.
+   */
+  const canForce = user?.role === 'patron' || user?.role === 'manager';
+
+  const performCheckOut = async (params: {
+    force?: boolean;
+    forceReason?: string;
+    transferToCompany?: boolean;
+  }) => {
+    setLoading(true);
+    try {
+      await roomsApi.checkOut(room.id, {
+        force: params.force,
+        forceReason: params.forceReason,
+        transferToCompany: params.transferToCompany,
+        earlyDepartureMode: 'refund',
+        staffName: user?.name,
+      });
+      onRoomUpdate();
+    } catch (err: unknown) {
+      const error = err as { message?: string; balance?: number; requireForce?: boolean };
+      if (error.requireForce && canForce) {
+        Alert.prompt(
+          'Bakiye Var',
+          `${error.message}\n\nZorla çıkış için sebep girin:`,
+          [
+            { text: 'İptal', style: 'cancel' },
+            {
+              text: 'Zorla Çıkış',
+              style: 'destructive',
+              onPress: (reason?: string) => {
+                if (!reason || !reason.trim()) {
+                  Alert.alert('Hata', 'Sebep zorunlu');
+                  return;
+                }
+                performCheckOut({ ...params, force: true, forceReason: reason.trim() });
+              },
+            },
+          ],
+          'plain-text',
+        );
+      } else if (error.requireForce) {
+        Alert.alert(
+          'Bakiye Var',
+          `${error.message}\n\nZorla çıkış için patron veya müdür yetkisi gerekir.`
+        );
+      } else {
+        Alert.alert('Hata', (err as Error).message || 'Checkout hatası');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCheckOut = () => {
+    // Şirket bağlamı varsa cariye yansıtma seçeneği sun
+    if (selectedCompanyId && folioBalance > 0) {
+      const company = companies.find((c) => c.id === selectedCompanyId);
       Alert.alert(
-        'Ödeme Eksik',
-        'Bu konaklama için folio\'ya henüz ücret/ödeme eklenmemiş. Lütfen önce folio kayıtlarını oluşturup ödeme alınız.',
-        [{ text: 'Tamam' }]
+        'Check-out',
+        `${formatCurrency(folioBalance)} bakiye var.\n\n${company?.name || 'Şirket'} cariye yansıtılsın mı?`,
+        [
+          { text: 'İptal', style: 'cancel' },
+          { text: 'Hayır, Ödeme Al', onPress: () => performCheckOut({}) },
+          {
+            text: 'Evet, Cariye Yansıt',
+            onPress: () => performCheckOut({ transferToCompany: true }),
+          },
+        ]
       );
       return;
     }
-
     const message = folioBalance > 0
-      ? `Oda ${room.number} için check-out yapılsın mı?\n\n⚠️ Ödenmemiş bakiye: ${formatCurrency(folioBalance)}`
+      ? `Oda ${room.number} için check-out?\n\n⚠️ Bakiye: ${formatCurrency(folioBalance)}`
       : `Oda ${room.number} için check-out yapılsın mı?`;
-
     Alert.alert('Check-out', message, [
       { text: 'İptal', style: 'cancel' },
       {
         text: 'Check-out Yap',
         style: folioBalance > 0 ? 'destructive' : 'default',
-        onPress: async () => {
-          setLoading(true);
-          try {
-            await roomsApi.checkOut(room.id, force ? { force: true } : undefined);
-            onRoomUpdate();
-          } catch (err: unknown) {
-            const error = err as { message?: string; balance?: number; requireForce?: boolean };
-            if (error.requireForce) {
-              // Bakiye var — zorla çıkış seçeneği sun
-              Alert.alert(
-                'Ödenmemiş Bakiye',
-                `${error.message}\n\nYine de çıkış yapmak istiyor musunuz?`,
-                [
-                  { text: 'Hayır, Ödeme Al', style: 'cancel' },
-                  {
-                    text: 'Evet, Çıkış Yap',
-                    style: 'destructive',
-                    onPress: () => handleCheckOut(true),
-                  },
-                ]
-              );
-            } else {
-              Alert.alert('Hata', (err as Error).message || 'Checkout hatası');
-            }
-          } finally {
-            setLoading(false);
-          }
-        },
+        onPress: () => performCheckOut({}),
       },
     ]);
   };
@@ -657,9 +761,8 @@ const RoomSellView: React.FC<RoomSellViewProps> = ({ room, onClose, onRoomUpdate
           </AppCard>
         )}
 
-        {/* Folio Özeti — dolu oda veya rezervasyon varsa */}
-        {(isOccupied || room.reservationId) && (
-          <AppCard style={styles.card}>
+        {/* Folio Özeti — her zaman görünür; rezervasyonsuz odada Folio Ekle akışı walk-in oluşturur */}
+        <AppCard style={styles.card}>
             <View style={styles.sectionHeader}>
               <Ionicons name="receipt" size={20} color={colors.primary} />
               <Text style={styles.sectionTitle}>Folio</Text>
@@ -685,9 +788,9 @@ const RoomSellView: React.FC<RoomSellViewProps> = ({ room, onClose, onRoomUpdate
                     </View>
                     <Text style={[
                       styles.folioAmount,
-                      (folio.category === 'payment' || folio.category === 'discount') && styles.folioAmountNeg,
+                      isFolioDeductionRow(folio.category) && styles.folioAmountNeg,
                     ]}>
-                      {folio.category === 'payment' || folio.category === 'discount' ? '-' : ''}
+                      {isFolioDeductionRow(folio.category) ? '-' : ''}
                       {formatCurrency(parseAmount(folio.amount))}
                     </Text>
                     <TouchableOpacity onPress={() => handleFolioDelete(folio.id)} style={styles.folioDeleteBtn}>
@@ -722,13 +825,12 @@ const RoomSellView: React.FC<RoomSellViewProps> = ({ room, onClose, onRoomUpdate
 
             <AppButton
               title="Folio Ekle"
-              onPress={() => setShowFolioAdd(true)}
+              onPress={handleFolioAddPress}
               variant="outline"
               icon="add-circle-outline"
               style={{ marginTop: spacing.sm }}
             />
-          </AppCard>
-        )}
+        </AppCard>
 
         {/* Aksiyon Butonları */}
         {isAvailable && (

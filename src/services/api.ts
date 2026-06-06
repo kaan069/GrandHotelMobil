@@ -167,7 +167,17 @@ export const roomsApi = {
     }),
 
   /** Check-out: Misafir çıkışı (tüm veya tek misafir) */
-  checkOut: (roomId: number, body?: { guestId?: number; force?: boolean }) =>
+  checkOut: (
+    roomId: number,
+    body?: {
+      guestId?: number;
+      force?: boolean;
+      forceReason?: string;
+      earlyDepartureMode?: 'refund' | 'full' | 'penalty';
+      transferToCompany?: boolean;
+      staffName?: string;
+    }
+  ) =>
     apiClient<ApiRoom>(`/rooms/${roomId}/check_out/`, {
       method: 'POST',
       body: JSON.stringify(body || {}),
@@ -215,10 +225,25 @@ export const roomsApi = {
 
 /* ==================== HOTEL API ==================== */
 
+export interface HotelSettings {
+  id: number;
+  name: string;
+  address?: string;
+  phone?: string;
+  email?: string;
+  taxNumber?: string;
+  status?: string;
+  enabledModules?: Record<string, boolean>;
+  requirePaymentAtCheckin: boolean;
+  companyExemptFromCheckinPayment: boolean;
+  serviceOpen?: boolean;
+  [key: string]: unknown;
+}
+
 export const hotelApi = {
-  get: () => apiClient<Record<string, unknown>>('/hotel/'),
-  update: (data: Record<string, unknown>) =>
-    apiClient<Record<string, unknown>>('/hotel/', {
+  get: () => apiClient<HotelSettings>('/hotel/'),
+  update: (data: Partial<HotelSettings>) =>
+    apiClient<HotelSettings>('/hotel/', {
       method: 'PUT',
       body: JSON.stringify(data),
     }),

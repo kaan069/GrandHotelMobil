@@ -123,14 +123,20 @@ const MrzScanModal: React.FC<MrzScanModalProps> = ({ visible, onClose, onScan })
       const result = await TextRecognition.recognize(photo.uri);
       if (stoppedRef.current) return;
 
+      /* DEBUG: OCR çıktısını göster — sorun çözülünce kaldırılacak */
+      console.log('[MRZ OCR]', JSON.stringify(result.text));
+
       const data = parseMrz(result.text || '');
       if (data) {
+        console.log('[MRZ PARSED]', JSON.stringify(data));
         stoppedRef.current = true;
         if (intervalRef.current) clearInterval(intervalRef.current);
         playSuccessAnimation(data);
+      } else {
+        console.log('[MRZ PARSE FAIL] — yukarıdaki OCR metni eşleşmedi');
       }
-    } catch {
-      /* OCR hatası — sonraki frame'de tekrar denenir, sessizce geç */
+    } catch (e) {
+      console.log('[MRZ ERROR]', e);
     } finally {
       busyRef.current = false;
     }
