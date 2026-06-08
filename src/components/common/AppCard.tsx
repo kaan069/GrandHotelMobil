@@ -14,14 +14,16 @@ import { colors, spacing, borderRadius } from '../../theme';
 export interface AppCardProps {
   children: React.ReactNode;
   onPress?: () => void;
+  onLongPress?: () => void;
   style?: StyleProp<ViewStyle>;
 }
 
-const AppCard: React.FC<AppCardProps> = ({ children, onPress, style }) => {
-  if (onPress) {
+const AppCard: React.FC<AppCardProps> = ({ children, onPress, onLongPress, style }) => {
+  if (onPress || onLongPress) {
     return (
       <TouchableOpacity
         onPress={onPress}
+        onLongPress={onLongPress}
         activeOpacity={0.7}
         style={[styles.card, style]}
       >

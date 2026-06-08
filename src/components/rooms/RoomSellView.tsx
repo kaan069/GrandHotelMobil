@@ -123,6 +123,16 @@ const RoomSellView: React.FC<RoomSellViewProps> = ({ room, onClose, onRoomUpdate
   /* Aktif reservation ID — gerçek (parent'tan) veya walk-in akışında oluşturulan */
   const activeReservationId = room.reservationId ?? pendingReservationId;
 
+  /* room.guests parent'tan güncellendiğinde local state'i sync et (rezerve/dolu durumlarda).
+   * Boş odada (reservation yok) kullanıcı misafir ekliyor → local state korunur. */
+  const roomGuestSignature = (room.guests || []).map(g => `${g.guestId}`).join(',');
+  useEffect(() => {
+    if (room.reservationId) {
+      setGuests(room.guests || []);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [room.reservationId, roomGuestSignature]);
+
   /* Folio yükle — reservation varsa (race condition korumalı) */
   useEffect(() => {
     if (!activeReservationId) {
@@ -682,15 +692,22 @@ const RoomSellView: React.FC<RoomSellViewProps> = ({ room, onClose, onRoomUpdate
           )}
         </AppCard>
 
-        {/* Misafir Yönetimi */}
-        {(isAvailable || isOccupied) && (
-          <AppCard style={styles.card}>
+        {/* Misafir Yönetimi — her durumda görünür (rezerve odada da kim rezerve ettiği görünsün) */}
+        <AppCard style={styles.card}>
             <View style={styles.sectionHeader}>
               <Ionicons name="people" size={20} color={colors.primary} />
               <Text style={styles.sectionTitle}>
-                Odadaki Misafirler ({guests.length})
+                {isReserved ? `Rezerve Eden (${guests.length})` : `Odadaki Misafirler (${guests.length})`}
               </Text>
             </View>
+            {isReserved && room.reservationCheckIn && (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8, marginTop: -4, paddingHorizontal: 4 }}>
+                <Ionicons name="calendar-outline" size={14} color={colors.primary} />
+                <Text style={{ fontSize: 12, color: colors.primary, fontWeight: '600' }}>
+                  Giriş: {new Date(room.reservationCheckIn).toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric' })}
+                </Text>
+              </View>
+            )}
 
             {guests.map((guest) => (
               <View key={guest.guestId} style={styles.guestRow}>
@@ -727,12 +744,10 @@ const RoomSellView: React.FC<RoomSellViewProps> = ({ room, onClose, onRoomUpdate
                 <Text style={styles.guestActionText}>Kayıtlı Misafir</Text>
               </TouchableOpacity>
             </View>
-          </AppCard>
-        )}
+        </AppCard>
 
-        {/* Rezervasyon Notu */}
-        {(isAvailable || isOccupied) && (
-          <AppCard style={styles.card}>
+        {/* Rezervasyon Notu — her durumda görünür */}
+        <AppCard style={styles.card}>
             <View style={styles.sectionHeader}>
               <Ionicons name="document-text" size={20} color={colors.primary} />
               <Text style={styles.sectionTitle}>Rezervasyon Notu</Text>
@@ -743,7 +758,7 @@ const RoomSellView: React.FC<RoomSellViewProps> = ({ room, onClose, onRoomUpdate
               placeholder="Not ekleyin..."
               multiline
             />
-            {isOccupied && notes !== (room.reservationNotes || '') && (
+            {(isOccupied || isReserved) && notes !== (room.reservationNotes || '') && (
               <AppButton
                 title="Notu Kaydet"
                 variant="outline"
@@ -758,8 +773,7 @@ const RoomSellView: React.FC<RoomSellViewProps> = ({ room, onClose, onRoomUpdate
                 style={{ marginTop: spacing.sm }}
               />
             )}
-          </AppCard>
-        )}
+        </AppCard>
 
         {/* Folio Özeti — her zaman görünür; rezervasyonsuz odada Folio Ekle akışı walk-in oluşturur */}
         <AppCard style={styles.card}>

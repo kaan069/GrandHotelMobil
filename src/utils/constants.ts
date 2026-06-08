@@ -237,6 +237,68 @@ export const EMPLOYEES_STORAGE_KEY = 'grandhotel_employees';
 export const SHIFTS_STORAGE_KEY = 'grandhotel_shifts';
 export const COMPLAINTS_STORAGE_KEY = 'grandhotel_complaints';
 
+/* ==================== REZERVASYON DURUMLARI ==================== */
+
+export const RESERVATION_STATUS = {
+  RESERVED: 'reserved',
+  CHECKED_IN: 'checked_in',
+  CHECKED_OUT: 'checked_out',
+  CANCELLED: 'cancelled',
+  NO_SHOW: 'no_show',
+} as const;
+
+export type ReservationStatus = typeof RESERVATION_STATUS[keyof typeof RESERVATION_STATUS];
+
+export const RESERVATION_STATUS_LABELS: Record<string, string> = {
+  [RESERVATION_STATUS.RESERVED]: 'Beklemede',
+  [RESERVATION_STATUS.CHECKED_IN]: 'Giriş Yapıldı',
+  [RESERVATION_STATUS.CHECKED_OUT]: 'Çıkış Yapıldı',
+  [RESERVATION_STATUS.CANCELLED]: 'İptal',
+  [RESERVATION_STATUS.NO_SHOW]: 'Gelmedi',
+};
+
+export const RESERVATION_STATUS_COLORS: Record<string, string> = {
+  [RESERVATION_STATUS.RESERVED]: '#F59E0B',
+  [RESERVATION_STATUS.CHECKED_IN]: '#3B82F6',
+  [RESERVATION_STATUS.CHECKED_OUT]: '#64748B',
+  [RESERVATION_STATUS.CANCELLED]: '#EF4444',
+  [RESERVATION_STATUS.NO_SHOW]: '#94A3B8',
+};
+
+/* ==================== REZERVASYON FİLTRE PRESET'LERİ ==================== */
+
+export const RESERVATION_FILTERS = {
+  TODAY_CHECKIN: 'today_checkin',
+  TODAY_CHECKOUT: 'today_checkout',
+  TODAY_CHECKED_OUT: 'today_checked_out',
+  TODAY_CHECKOUT_DONE: 'today_checkout_done',
+  TOMORROW_CHECKIN: 'tomorrow_checkin',
+  UNPAID_CHECKOUT: 'unpaid_checkout',
+} as const;
+
+export const RESERVATION_FILTER_LABELS: Record<string, string> = {
+  [RESERVATION_FILTERS.TODAY_CHECKIN]: 'Bugün Girecekler',
+  [RESERVATION_FILTERS.TODAY_CHECKOUT]: 'Bugün Çıkacaklar',
+  [RESERVATION_FILTERS.TODAY_CHECKED_OUT]: 'Bugün Çıkışlı',
+  [RESERVATION_FILTERS.TODAY_CHECKOUT_DONE]: 'Bugün Çıkanlar',
+  [RESERVATION_FILTERS.TOMORROW_CHECKIN]: 'Yarın Girecekler',
+  [RESERVATION_FILTERS.UNPAID_CHECKOUT]: 'Ödemesiz Çıkış',
+};
+
+/* ==================== ÖDEME DURUMLARI ==================== */
+
+export const PAYMENT_STATUS_LABELS: Record<string, string> = {
+  paid: 'Ödendi',
+  partial: 'Kısmi',
+  unpaid: 'Ödenmedi',
+};
+
+export const PAYMENT_STATUS_COLORS: Record<string, string> = {
+  paid: '#22C55E',
+  partial: '#F59E0B',
+  unpaid: '#EF4444',
+};
+
 /* ==================== FOLİO KATEGORİLERİ ==================== */
 
 export const FOLIO_CATEGORIES: readonly LabelValueOption[] = [

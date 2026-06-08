@@ -49,18 +49,27 @@ const formatDateTr = (dateStr: string): string => {
 const ReservationConfirmModal: React.FC<ReservationConfirmModalProps> = ({
   visible, roomNumber, guests, companyName, notes, onClose, onConfirm,
 }) => {
-  const checkIn = todayStr();
+  const [checkIn, setCheckIn] = useState<string>(todayStr());
   const [checkOut, setCheckOut] = useState<string>(addDays(todayStr(), 1));
   const [submitting, setSubmitting] = useState(false);
-  const [calendarOpen, setCalendarOpen] = useState(false);
+  const [calendarTarget, setCalendarTarget] = useState<'checkIn' | 'checkOut' | null>(null);
 
   useEffect(() => {
     if (visible) {
+      setCheckIn(todayStr());
       setCheckOut(addDays(todayStr(), 1));
       setSubmitting(false);
-      setCalendarOpen(false);
+      setCalendarTarget(null);
     }
   }, [visible]);
+
+  /* Giriş tarihi değişirse çıkışı en az +1 gün tut */
+  const handleCheckInChange = (newCheckIn: string) => {
+    setCheckIn(newCheckIn);
+    if (checkOut <= newCheckIn) {
+      setCheckOut(addDays(newCheckIn, 1));
+    }
+  };
 
   const handleConfirm = async () => {
     setSubmitting(true);
@@ -106,16 +115,19 @@ const ReservationConfirmModal: React.FC<ReservationConfirmModalProps> = ({
             ) : null}
 
             <Text style={styles.label}>Giriş Tarihi</Text>
-            <View style={styles.fixedDateBox}>
-              <Ionicons name="calendar-outline" size={18} color={colors.textSecondary} />
-              <Text style={styles.fixedDateText}>{formatDateTr(checkIn)}</Text>
-              <View style={styles.todayBadge}>
-                <Text style={styles.todayBadgeText}>Bugün</Text>
-              </View>
-            </View>
+            <TouchableOpacity style={styles.dateSelector} onPress={() => setCalendarTarget('checkIn')}>
+              <Ionicons name="calendar" size={18} color={colors.primary} />
+              <Text style={styles.dateSelectorText}>{formatDateTr(checkIn)}</Text>
+              {checkIn === todayStr() && (
+                <View style={styles.todayBadge}>
+                  <Text style={styles.todayBadgeText}>Bugün</Text>
+                </View>
+              )}
+              <Ionicons name="chevron-down" size={18} color={colors.textSecondary} />
+            </TouchableOpacity>
 
             <Text style={styles.label}>Çıkış Tarihi</Text>
-            <TouchableOpacity style={styles.dateSelector} onPress={() => setCalendarOpen(true)}>
+            <TouchableOpacity style={styles.dateSelector} onPress={() => setCalendarTarget('checkOut')}>
               <Ionicons name="calendar" size={18} color={colors.primary} />
               <Text style={styles.dateSelectorText}>{formatDateTr(checkOut)}</Text>
               <Ionicons name="chevron-down" size={18} color={colors.textSecondary} />
@@ -149,12 +161,15 @@ const ReservationConfirmModal: React.FC<ReservationConfirmModalProps> = ({
           </ScrollView>
 
           <CalendarPicker
-            visible={calendarOpen}
-            selectedDate={checkOut}
-            minDate={addDays(checkIn, 1)}
-            title="Çıkış Tarihi"
-            onSelect={setCheckOut}
-            onClose={() => setCalendarOpen(false)}
+            visible={calendarTarget !== null}
+            selectedDate={calendarTarget === 'checkIn' ? checkIn : checkOut}
+            minDate={calendarTarget === 'checkIn' ? todayStr() : addDays(checkIn, 1)}
+            title={calendarTarget === 'checkIn' ? 'Giriş Tarihi' : 'Çıkış Tarihi'}
+            onSelect={(d) => {
+              if (calendarTarget === 'checkIn') handleCheckInChange(d);
+              else setCheckOut(d);
+            }}
+            onClose={() => setCalendarTarget(null)}
           />
         </View>
       </TouchableOpacity>

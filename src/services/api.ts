@@ -403,6 +403,10 @@ export const reservationsApi = {
     roomId?: number; guestId?: number; companyId?: number;
     isActive?: boolean; status?: string;
     dateFrom?: string; dateTo?: string;
+    /** Preset filtre: today_checkin, today_checkout, today_checked_out, today_checkout_done, tomorrow_checkin, unpaid_checkout */
+    filter?: string;
+    /** Misafir adı / oda no / firma arama (server-side) */
+    search?: string;
   }) => {
     const params = new URLSearchParams();
     if (filters?.roomId) params.append('roomId', String(filters.roomId));
@@ -412,6 +416,8 @@ export const reservationsApi = {
     if (filters?.status) params.append('status', filters.status);
     if (filters?.dateFrom) params.append('dateFrom', filters.dateFrom);
     if (filters?.dateTo) params.append('dateTo', filters.dateTo);
+    if (filters?.filter) params.append('filter', filters.filter);
+    if (filters?.search) params.append('search', filters.search);
     const qs = params.toString();
     return apiClient<Reservation[]>(`/reservations/${qs ? '?' + qs : ''}`);
   },
