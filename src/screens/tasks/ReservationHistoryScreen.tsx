@@ -27,7 +27,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
-import { AppCard, AppInput, StatusChip, EmptyState, LoadingState } from '../../components/common';
+import { AppCard, AppButton, AppInput, StatusChip, EmptyState, LoadingState } from '../../components/common';
 import CalendarPicker from '../../components/common/CalendarPicker';
 import { colors, spacing, fontSize, borderRadius } from '../../theme';
 import {
@@ -84,13 +84,12 @@ const PRESET_CHIPS: { value: string; label: string }[] = [
   { value: RESERVATION_FILTERS.UNPAID_CHECKOUT, label: RESERVATION_FILTER_LABELS[RESERVATION_FILTERS.UNPAID_CHECKOUT] },
 ];
 
-/* Durum chip listesi */
+/* Durum chip listesi — İptal kasıtlı olarak yok (iptal edilenler hiçbir yerde gösterilmiyor) */
 const STATUS_CHIPS: { value: string; label: string }[] = [
   { value: 'all', label: 'Hepsi' },
   { value: RESERVATION_STATUS.RESERVED, label: RESERVATION_STATUS_LABELS[RESERVATION_STATUS.RESERVED] },
   { value: RESERVATION_STATUS.CHECKED_IN, label: RESERVATION_STATUS_LABELS[RESERVATION_STATUS.CHECKED_IN] },
   { value: RESERVATION_STATUS.CHECKED_OUT, label: RESERVATION_STATUS_LABELS[RESERVATION_STATUS.CHECKED_OUT] },
-  { value: RESERVATION_STATUS.CANCELLED, label: RESERVATION_STATUS_LABELS[RESERVATION_STATUS.CANCELLED] },
 ];
 
 const ReservationHistoryScreen: React.FC<ReservationHistoryScreenProps> = ({ onClose }) => {
@@ -174,8 +173,8 @@ const ReservationHistoryScreen: React.FC<ReservationHistoryScreenProps> = ({ onC
     }
   };
 
-  /* Rezervasyon iptal */
-  const handleCancel = (r: Reservation) => {
+  /* Rezervasyon iptal — hem ana listeden hem detaydan kullanılır */
+  const handleCancel = (r: { id: number; roomNumber: string; status: string }, fromDetail = false) => {
     if (r.status !== RESERVATION_STATUS.RESERVED) {
       Alert.alert('İptal Edilemez', 'Sadece "Beklemede" durumundaki rezervasyonlar iptal edilebilir.');
       return;
@@ -191,6 +190,10 @@ const ReservationHistoryScreen: React.FC<ReservationHistoryScreenProps> = ({ onC
           onPress: async () => {
             try {
               await reservationsApi.cancel(r.id);
+              if (fromDetail) {
+                setSelectedDetail(null);
+                setSelectedTabs([]);
+              }
               fetchReservations();
             } catch (err: any) {
               Alert.alert('Hata', err.message || 'İptal edilemedi');
@@ -244,6 +247,19 @@ const ReservationHistoryScreen: React.FC<ReservationHistoryScreenProps> = ({ onC
             {selectedDetail.notes ? <Text style={styles.notesText}>Not: {selectedDetail.notes}</Text> : null}
             {selectedDetail.createdByStaff && (
               <Text style={styles.companyText}>Personel: {selectedDetail.createdByStaff}</Text>
+            )}
+            {selectedDetail.status === RESERVATION_STATUS.RESERVED && (
+              <AppButton
+                title="Rezervasyon İptal"
+                onPress={() => handleCancel({
+                  id: selectedDetail.id,
+                  roomNumber: selectedDetail.roomNumber,
+                  status: selectedDetail.status,
+                }, true)}
+                icon="close-circle-outline"
+                variant="danger"
+                style={{ marginTop: spacing.md }}
+              />
             )}
           </AppCard>
 
