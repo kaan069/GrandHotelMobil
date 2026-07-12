@@ -325,17 +325,14 @@ export const APP_NAME = 'GrandHotel';
 // Varsayılan API URL — sunucu
 // Geliştirici modu ile değiştirilebilir (login ekranında logo'ya 5x tıkla)
 import { Platform } from 'react-native';
-const PRODUCTION_URL = 'http://89.252.152.168/api';
-const getDefaultHost = () => {
-  if (Platform.OS === 'web') return 'localhost';
-  if (__DEV__) {
-    // Android emülatöründen host makina → 10.0.2.2, iOS simülatörü → localhost
-    return Platform.OS === 'android' ? '10.0.2.2' : 'localhost';
-  }
-  return '89.252.152.168'; // Production sunucu
-};
-const DEFAULT_HOST = getDefaultHost();
-export const DEFAULT_API_BASE_URL = __DEV__ ? `http://${DEFAULT_HOST}:8000/api` : PRODUCTION_URL;
+const PRODUCTION_URL = 'https://api.hotelgrandhitit.com/api';
+// Lokal backend host'u (yalnızca "Test Sunucu (Lokal)" seçilirse kullanılır):
+// Android emülatörü → 10.0.2.2, iOS simülatörü/web → localhost
+const DEFAULT_HOST = Platform.OS === 'android' ? '10.0.2.2' : 'localhost';
+// Varsayılan: canlı prod backend (HTTPS). iOS düz HTTP'yi (ATS) bloklar ve prod
+// sunucuda :8000 firewall'lı olduğu için dev'de de HTTPS domaine bağlanıyoruz.
+// Lokal backend ile geliştirmek istersen login ekranından "Test Sunucu (Lokal)" seç.
+export const DEFAULT_API_BASE_URL = PRODUCTION_URL;
 
 // Mutable API_BASE_URL — sunucu seçimiyle değişebilir
 export let API_BASE_URL = DEFAULT_API_BASE_URL;
@@ -348,6 +345,6 @@ export interface ServerConfig {
 }
 
 export const SERVER_LIST: ServerConfig[] = [
-  { name: 'Grand Hotel (Sunucu)', url: 'http://89.252.152.168/api' },
+  { name: 'Grand Hitit (Canlı)', url: 'https://api.hotelgrandhitit.com/api' },
   { name: 'Test Sunucu (Lokal)', url: `http://${DEFAULT_HOST}:8000/api` },
 ];
