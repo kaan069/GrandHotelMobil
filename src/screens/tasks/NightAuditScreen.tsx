@@ -24,6 +24,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { AppButton } from '../../components/common';
 import { colors, spacing, fontSize, borderRadius } from '../../theme';
 import { kazancApi } from '../../services/api';
+import type { NightAuditSchedule } from '../../services/api';
 import useAuth from '../../hooks/useAuth';
 
 interface Props {
@@ -58,6 +59,8 @@ const NightAuditScreen: React.FC<Props> = ({ onClose }) => {
   const [totalCharge, setTotalCharge] = useState(0);
   const [noShowStatus, setNoShowStatus] = useState<Record<number, string>>({});
   const [alreadyProcessed, setAlreadyProcessed] = useState(false);
+  /** Otomatik gün sonu durumu — salt bilgi, ayar web panelinde */
+  const [schedule, setSchedule] = useState<NightAuditSchedule | null>(null);
 
   // Sonuç
   const [result, setResult] = useState<{ processedRooms: number; totalCharged: number; noShowCount: number } | null>(null);
@@ -69,11 +72,16 @@ const NightAuditScreen: React.FC<Props> = ({ onClose }) => {
   const loadPreview = async () => {
     setLoading(true);
     try {
-      const data = await kazancApi.nightAuditPreview();
+      const [data, scheduleData] = await Promise.all([
+        kazancApi.nightAuditPreview(),
+        // Otomatik durumu bilgi amaçlı — alınamazsa ekran yine de açılır
+        kazancApi.nightAuditSchedule().catch(() => null),
+      ]);
       setOccupiedRooms(data.occupiedRooms || []);
       setNoShowRooms(data.noShowRooms || []);
       setTotalCharge(data.totalCharge || 0);
       setAlreadyProcessed(data.alreadyProcessed || false);
+      setSchedule(scheduleData);
     } catch {
       Alert.alert('Hata', 'Gün sonu verileri yüklenemedi');
     } finally {
@@ -191,12 +199,25 @@ const NightAuditScreen: React.FC<Props> = ({ onClose }) => {
             <Text style={styles.dateText}>{today}</Text>
           </View>
 
+          {/* Otomatik gün sonu açıksa bilgilendir — elle çalıştırmaya gerek yok */}
+          {schedule?.enabled && !alreadyProcessed && (
+            <View style={styles.autoBanner}>
+              <Ionicons name="time-outline" size={20} color="#0369a1" />
+              <Text style={styles.autoBannerText}>
+                Otomatik gün sonu açık: her gece {schedule.nightAuditTime}.
+                Elle çalıştırmanıza gerek yok.
+              </Text>
+            </View>
+          )}
+
           {/* Zaten işlenmiş uyarısı */}
           {alreadyProcessed && (
             <View style={{ backgroundColor: '#fef3c7', padding: 12, borderRadius: 8, marginBottom: 12, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               <Ionicons name="warning" size={20} color="#f59e0b" />
               <Text style={{ color: '#92400e', fontSize: 13, fontWeight: '600', flex: 1 }}>
-                Bugün için gün sonu işlemi zaten yapılmış.
+                {schedule?.lastRun?.automatic && schedule.ranToday
+                  ? 'Bugünün gün sonu otomatik olarak alındı.'
+                  : 'Bugün için gün sonu işlemi zaten yapılmış.'}
               </Text>
             </View>
           )}
@@ -311,6 +332,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#1e293b', padding: spacing.md, borderRadius: borderRadius.md, marginBottom: spacing.md,
   },
   dateText: { color: '#fff', fontSize: fontSize.md, fontWeight: '600' },
+  autoBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: '#e0f2fe', padding: 12, borderRadius: borderRadius.md, marginBottom: spacing.md,
+  },
+  autoBannerText: { flex: 1, color: '#0c4a6e', fontSize: 13, fontWeight: '600' },
   section: {
     backgroundColor: colors.card, borderRadius: borderRadius.md, padding: spacing.md, marginBottom: spacing.md,
     elevation: 1, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2,

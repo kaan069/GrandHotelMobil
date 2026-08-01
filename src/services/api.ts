@@ -513,6 +513,25 @@ export const reportsApi = {
 
 /* ==================== KAZANÇ (GELİR) API ==================== */
 
+/** Otomatik gün sonu durumu */
+export interface NightAuditSchedule {
+  /** Ayarlanan saat "HH:MM" — null ise otomatik kapalı */
+  nightAuditTime: string | null;
+  enabled: boolean;
+  /** Bugünün gün sonu alındı mı */
+  ranToday: boolean;
+  /** Sıradaki otomatik çalışma (ISO) — kapalıysa null */
+  nextRun: string | null;
+  lastRun: {
+    date: string;
+    processedAt: string;
+    processedBy: string;
+    automatic: boolean;
+    roomsCharged: number;
+    totalCharged: number;
+  } | null;
+}
+
 export const kazancApi = {
   /** Dashboard özet istatistikler (doluluk + ciro + check-in/out) */
   dashboardStats: () =>
@@ -541,6 +560,13 @@ export const kazancApi = {
   /** Gün sonu uygula — oda ücretlerini folio'ya yaz */
   nightAuditExecute: (processedBy?: string) =>
     apiClient<any>('/kazanc/night-audit/', { method: 'POST', body: JSON.stringify({ processedBy }) }),
+
+  /**
+   * Otomatik gün sonu durumu (salt okunur).
+   * Saati değiştirmek web panelinden yapılır; mobil sadece bilgilendirir.
+   */
+  nightAuditSchedule: () =>
+    apiClient<NightAuditSchedule>('/kazanc/night-audit-schedule/'),
 
   /** No-show iptal */
   cancelNoShow: (reservationId: number) =>
