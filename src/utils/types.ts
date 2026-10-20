@@ -107,7 +107,9 @@ export type FolioCategory =
   | 'restaurant'
   | 'service'
   | 'discount'
-  | 'payment';
+  | 'payment'
+  | 'account_transfer_debit'
+  | 'account_transfer_credit';
 
 /** Backend GET /api/folios/ response'undaki tek hesap kalemi */
 export interface ApiFolioItem {

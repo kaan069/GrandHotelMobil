@@ -8,10 +8,10 @@
  * Backend API: POST /api/staff/login/ → access + refresh JWT token döner
  */
 
-import React, { createContext, useState, useCallback, ReactNode } from 'react';
+import React, { createContext, useState, useCallback, useEffect, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { Role } from '../utils/constants';
-import { staffApi } from '../services/api';
+import { staffApi, setAuthExpiredHandler } from '../services/api';
 
 export interface User {
   id: number;
@@ -104,6 +104,15 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       /* Storage kullanılamıyorsa sessizce geç */
     }
   }, []);
+
+  /**
+   * Token yenilenemezse (refresh süresi doldu / personel pasif) apiClient bu
+   * fonksiyonu çağırır → kullanıcı login ekranına düşer.
+   */
+  useEffect(() => {
+    setAuthExpiredHandler(() => { logout(); });
+    return () => setAuthExpiredHandler(null);
+  }, [logout]);
 
   /** Kaydedilmiş oturumu yükle (uygulama açılışında) */
   const loadSession = useCallback(async (): Promise<void> => {

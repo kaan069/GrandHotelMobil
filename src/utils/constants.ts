@@ -239,22 +239,26 @@ export const COMPLAINTS_STORAGE_KEY = 'grandhotel_complaints';
 
 /* ==================== REZERVASYON DURUMLARI ==================== */
 
+/**
+ * Backend Reservation.RESERVATION_STATUS_CHOICES ile birebir aynı (tek doğruluk kaynağı backend).
+ * Webdeki RESERVATION_STATUS da aynı değer ve etiketleri kullanır.
+ * Gelmeyen (no-show) rezervasyonlar gün sonunda 'cancelled' olur;
+ * no-show sayısı/detayı gün sonu raporunda tutulur.
+ */
 export const RESERVATION_STATUS = {
   RESERVED: 'reserved',
   CHECKED_IN: 'checked_in',
   CHECKED_OUT: 'checked_out',
   CANCELLED: 'cancelled',
-  NO_SHOW: 'no_show',
 } as const;
 
 export type ReservationStatus = typeof RESERVATION_STATUS[keyof typeof RESERVATION_STATUS];
 
 export const RESERVATION_STATUS_LABELS: Record<string, string> = {
-  [RESERVATION_STATUS.RESERVED]: 'Beklemede',
+  [RESERVATION_STATUS.RESERVED]: 'Rezerve',
   [RESERVATION_STATUS.CHECKED_IN]: 'Giriş Yapıldı',
   [RESERVATION_STATUS.CHECKED_OUT]: 'Çıkış Yapıldı',
   [RESERVATION_STATUS.CANCELLED]: 'İptal',
-  [RESERVATION_STATUS.NO_SHOW]: 'Gelmedi',
 };
 
 export const RESERVATION_STATUS_COLORS: Record<string, string> = {
@@ -262,7 +266,6 @@ export const RESERVATION_STATUS_COLORS: Record<string, string> = {
   [RESERVATION_STATUS.CHECKED_IN]: '#3B82F6',
   [RESERVATION_STATUS.CHECKED_OUT]: '#64748B',
   [RESERVATION_STATUS.CANCELLED]: '#EF4444',
-  [RESERVATION_STATUS.NO_SHOW]: '#94A3B8',
 };
 
 /* ==================== REZERVASYON FİLTRE PRESET'LERİ ==================== */
@@ -308,8 +311,11 @@ export const FOLIO_CATEGORIES: readonly LabelValueOption[] = [
   { value: 'service', label: 'Hizmet/Servis' },
   { value: 'discount', label: 'İndirim' },
   { value: 'payment', label: 'Ödeme' },
+  { value: 'account_transfer_debit', label: 'Cariye Borçlu Aktar' },
+  { value: 'account_transfer_credit', label: 'Cariye Alacaklı Aktar' },
 ];
 
+/** Backend FolioItem.CATEGORY_CHOICES ve webdeki FOLIO_CATEGORIES ile aynı anahtarlar */
 export const FOLIO_CATEGORY_LABELS: Record<string, string> = {
   room_charge: 'Oda Ücreti',
   minibar: 'Minibar',
@@ -317,6 +323,8 @@ export const FOLIO_CATEGORY_LABELS: Record<string, string> = {
   service: 'Hizmet/Servis',
   discount: 'İndirim',
   payment: 'Ödeme',
+  account_transfer_debit: 'Cariye Borçlu Aktar',
+  account_transfer_credit: 'Cariye Alacaklı Aktar',
 };
 
 /* ==================== UYGULAMA AYARLARI ==================== */
@@ -337,6 +345,15 @@ export const DEFAULT_API_BASE_URL = PRODUCTION_URL;
 // Mutable API_BASE_URL — sunucu seçimiyle değişebilir
 export let API_BASE_URL = DEFAULT_API_BASE_URL;
 export const setApiBaseUrl = (url: string) => { API_BASE_URL = url; };
+
+/**
+ * WebSocket adresini o anki API_BASE_URL'den üretir.
+ * https://x.com/api + '/ws/rooms/' → wss://x.com/ws/rooms/
+ * Sabit (const) yerine fonksiyon: sunucu login ekranında değiştirilirse
+ * bir sonraki bağlantı yeni sunucuya gider.
+ */
+export const getWsUrl = (path: string) =>
+  API_BASE_URL.replace(/\/api$/, '').replace(/^http/, 'ws') + path;
 
 // Sunucu listesi (geliştirici modu)
 export interface ServerConfig {

@@ -176,7 +176,7 @@ const ReservationHistoryScreen: React.FC<ReservationHistoryScreenProps> = ({ onC
   /* Rezervasyon iptal — hem ana listeden hem detaydan kullanılır */
   const handleCancel = (r: { id: number; roomNumber: string; status: string }, fromDetail = false) => {
     if (r.status !== RESERVATION_STATUS.RESERVED) {
-      Alert.alert('İptal Edilemez', 'Sadece "Beklemede" durumundaki rezervasyonlar iptal edilebilir.');
+      Alert.alert('İptal Edilemez', `Sadece "${RESERVATION_STATUS_LABELS[RESERVATION_STATUS.RESERVED]}" durumundaki rezervasyonlar iptal edilebilir.`);
       return;
     }
     Alert.alert(

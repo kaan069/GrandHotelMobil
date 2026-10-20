@@ -114,6 +114,13 @@ const FolioAddModal: React.FC<FolioAddModalProps> = ({ visible, onClose, onSave 
               ))}
             </View>
 
+            {/* Cari aktarma: hedefi backend belirler (firma → acente → misafir) */}
+            {(category === 'account_transfer_debit' || category === 'account_transfer_credit') && (
+              <Text style={styles.hintText}>
+                Tutar rezervasyonun firmasının, firma yoksa acentesinin, o da yoksa misafirin cari hesabına yazılır.
+              </Text>
+            )}
+
             {/* Ödeme yöntemi (sadece payment kategorisinde) */}
             {category === 'payment' && (
               <>
@@ -232,6 +239,11 @@ const styles = StyleSheet.create({
     fontSize: fontSize.xs,
     color: colors.error,
     marginBottom: 4,
+  },
+  hintText: {
+    fontSize: fontSize.xs,
+    color: colors.textSecondary,
+    marginTop: spacing.sm,
   },
   chipGrid: {
     flexDirection: 'row',

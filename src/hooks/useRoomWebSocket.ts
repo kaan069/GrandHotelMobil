@@ -15,15 +15,8 @@
 
 import { useEffect, useRef, useCallback } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
-import { API_BASE_URL } from '../utils/constants';
+import { getWsUrl } from '../utils/constants';
 import type { ApiRoom } from '../utils/types';
-
-/**
- * WebSocket URL'ini API URL'inden türet.
- * http://localhost:8000/api → ws://localhost:8000/ws/rooms/
- * Bu sayede fiziksel cihazda IP değişikliği tek yerden yapılır.
- */
-const WS_URL = API_BASE_URL.replace(/\/api$/, '').replace('http', 'ws') + '/ws/rooms/';
 
 interface UseRoomWebSocketOptions {
   onRoomUpdate: (room: ApiRoom) => void;
@@ -46,7 +39,8 @@ export default function useRoomWebSocket({ onRoomUpdate, enabled = true }: UseRo
       console.warn('[WS] hotel_id yok, bağlantı atlandı');
       return;
     }
-    const url = `${WS_URL}?hotel_id=${encodeURIComponent(hotelId)}`;
+    // URL her bağlantıda yeniden üretilir (sunucu değişmiş olabilir)
+    const url = `${getWsUrl('/ws/rooms/')}?hotel_id=${encodeURIComponent(hotelId)}`;
 
     const ws = new WebSocket(url);
     wsRef.current = ws;

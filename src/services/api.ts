@@ -52,31 +52,18 @@ import type { Fault } from '../components/tasks/FaultDetailView';
  *   apiClient<Guest[]>('/guests/') → Promise<Guest[]> döner
  *   apiClient<ApiRoom>('/rooms/1/') → Promise<ApiRoom> döner
  */
-export async function apiClient<T>(endpoint: string, options?: RequestInit): Promise<T> {
+export async function apiClient<T>(endpoint: string, options?: RequestInit, _retried = false): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`;
 
-  /* AsyncStorage'dan hotel ID ve JWT token al */
-  let hotelId: string | null = null;
-  let token: string | null = null;
-  try {
-    const keys = await AsyncStorage.multiGet([
-      'grandhotel_mobile_hotel_id',
-      'grandhotel_mobile_token',
-    ]);
-    hotelId = keys[0][1];
-    token = keys[1][1];
-  } catch {
-    /* Storage kullanılamıyorsa sessizce geç */
-  }
-
+  // Sıra önemli: önce options, sonra headers. Tersi olursa options.headers
+  // birleştirilmiş header'ları ezer ve Authorization kaybolur.
   const response = await fetch(url, {
+    ...options,
     headers: {
       'Content-Type': 'application/json',
-      ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
-      ...(hotelId ? { 'X-Hotel-Id': hotelId } : {}),
+      ...(await _getAuthHeaders()),
       ...(options?.headers || {}),
     },
-    ...options,
   });
 
   // HTTP 204 No Content (DELETE işlemlerinde döner)
@@ -84,21 +71,14 @@ export async function apiClient<T>(endpoint: string, options?: RequestInit): Pro
     return undefined as T;
   }
 
-  // 401 veya token süresi dolmuş 403 → Token refresh dene (login endpoint'i hariç)
-  // Backend süresi dolmuş token için 401 yerine 403 dönebiliyor (DRF default davranışı)
-  if (
-    (response.status === 401 ||
-      (response.status === 403 && /token|süres/i.test(
-        await response.clone().text().catch(() => '')
-      ))) &&
-    !endpoint.includes('/staff/login')
-  ) {
-    const refreshed = await _tryRefreshToken();
-    if (refreshed) {
-      // Yeni token ile tekrar dene
-      return apiClient<T>(endpoint, options);
+  // Token hatası → bir kez refresh + tekrar dene. İkinci kez de hata alırsak
+  // (ör. personel pasife alındı) sonsuz döngüye girmeden oturumu kapat.
+  if (!endpoint.includes('/staff/login') && await _isTokenError(response)) {
+    if (!_retried && await refreshAccessToken()) {
+      return apiClient<T>(endpoint, options, true);
     }
-    // Refresh başarısız → logout (AuthContext'e bırak)
+    await _handleAuthExpired();
+    throw new Error('Oturum süresi doldu, lütfen tekrar giriş yapın.');
   }
 
   // Hata durumunda backend'in döndüğü error mesajını al
@@ -123,8 +103,68 @@ export async function apiClient<T>(endpoint: string, options?: RequestInit): Pro
   return response.json();
 }
 
-/** Token refresh — 401 alındığında çağrılır */
-async function _tryRefreshToken(): Promise<boolean> {
+/* ==================== OTURUM YARDIMCILARI ==================== */
+
+/** AsyncStorage'dan JWT ve otel ID'sini okuyup header'a çevirir */
+async function _getAuthHeaders(): Promise<Record<string, string>> {
+  try {
+    const keys = await AsyncStorage.multiGet([
+      'grandhotel_mobile_hotel_id',
+      'grandhotel_mobile_token',
+    ]);
+    const hotelId = keys[0][1];
+    const token = keys[1][1];
+    return {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(hotelId ? { 'X-Hotel-Id': hotelId } : {}),
+    };
+  } catch {
+    /* Storage kullanılamıyorsa header'sız devam */
+    return {};
+  }
+}
+
+/**
+ * Yanıt token hatası mı? 401 her zaman; 403 ise sadece mesajda token geçiyorsa
+ * (DRF, authenticate_header tanımlı değilse süresi dolmuş token için 403 döner).
+ */
+async function _isTokenError(response: Response): Promise<boolean> {
+  if (response.status === 401) return true;
+  if (response.status !== 403) return false;
+  const text = await response.clone().text().catch(() => '');
+  return /token|süres/i.test(text);
+}
+
+/** Refresh başarısız olunca çağrılır — AuthContext logout'u buraya kaydeder */
+let _onAuthExpired: (() => void) | null = null;
+
+export function setAuthExpiredHandler(handler: (() => void) | null) {
+  _onAuthExpired = handler;
+}
+
+async function _handleAuthExpired() {
+  try {
+    await AsyncStorage.multiRemove(['grandhotel_mobile_token', 'grandhotel_mobile_refresh_token']);
+  } catch {
+    /* Storage hatası — yine de logout'u tetikle */
+  }
+  _onAuthExpired?.();
+}
+
+/**
+ * Aynı anda birden fazla istek 401 alırsa hepsi aynı refresh isteğini bekler
+ * (her biri ayrı refresh atmaz).
+ */
+let _refreshPromise: Promise<boolean> | null = null;
+
+export function refreshAccessToken(): Promise<boolean> {
+  if (!_refreshPromise) {
+    _refreshPromise = _doRefresh().finally(() => { _refreshPromise = null; });
+  }
+  return _refreshPromise;
+}
+
+async function _doRefresh(): Promise<boolean> {
   try {
     const refreshToken = await AsyncStorage.getItem('grandhotel_mobile_refresh_token');
     if (!refreshToken) return false;
@@ -568,9 +608,16 @@ export const kazancApi = {
   nightAuditSchedule: () =>
     apiClient<NightAuditSchedule>('/kazanc/night-audit-schedule/'),
 
-  /** No-show iptal */
+  /**
+   * No-show iptal — web ile aynı endpoint.
+   * Genel /reservations/{id}/cancel/ yerine bu kullanılır: sadece 'reserved'
+   * durumundaki kaydı iptal eder (yanlışlıkla check-in'li rezervasyon iptal edilemez).
+   */
   cancelNoShow: (reservationId: number) =>
-    apiClient<any>(`/reservations/${reservationId}/cancel/`, { method: 'POST' }),
+    apiClient<{ reservationId: number; status: string; roomNumber: string }>(
+      '/kazanc/night-audit-cancel-noshow/',
+      { method: 'POST', body: JSON.stringify({ reservationId }) },
+    ),
 
   /** Gelişmiş kazanç raporu (çoklu filtreleme) */
   advancedReport: (filters?: {
@@ -773,41 +820,27 @@ export const attendanceApi = {
 
 /* ==================== MULTIPART UPLOAD HELPER ==================== */
 
-async function apiMultipart<T>(endpoint: string, formData: FormData, method = 'POST'): Promise<T> {
+async function apiMultipart<T>(endpoint: string, formData: FormData, method = 'POST', _retried = false): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`;
-
-  let hotelId: string | null = null;
-  let token: string | null = null;
-  try {
-    const keys = await AsyncStorage.multiGet([
-      'grandhotel_mobile_hotel_id',
-      'grandhotel_mobile_token',
-    ]);
-    hotelId = keys[0][1];
-    token = keys[1][1];
-  } catch {
-    /* Storage kullanılamıyorsa sessizce geç */
-  }
 
   const response = await fetch(url, {
     method,
     body: formData,
-    headers: {
-      ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
-      ...(hotelId ? { 'X-Hotel-Id': hotelId } : {}),
-      // Content-Type EKLENMEMELİ — fetch boundary'i otomatik ekler
-    },
+    // Content-Type EKLENMEMELİ — fetch boundary'i otomatik ekler
+    headers: await _getAuthHeaders(),
   });
 
   if (response.status === 204) {
     return undefined as T;
   }
 
-  if (response.status === 401 && !endpoint.includes('/staff/login')) {
-    const refreshed = await _tryRefreshToken();
-    if (refreshed) {
-      return apiMultipart<T>(endpoint, formData, method);
+  // apiClient ile aynı kural: 401/token'lı 403 → bir kez refresh, olmazsa logout
+  if (await _isTokenError(response)) {
+    if (!_retried && await refreshAccessToken()) {
+      return apiMultipart<T>(endpoint, formData, method, true);
     }
+    await _handleAuthExpired();
+    throw new Error('Oturum süresi doldu, lütfen tekrar giriş yapın.');
   }
 
   if (!response.ok) {

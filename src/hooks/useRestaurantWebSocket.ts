@@ -18,10 +18,8 @@
 
 import { useEffect, useRef, useCallback } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
-import { API_BASE_URL } from '../utils/constants';
+import { getWsUrl } from '../utils/constants';
 import type { ApiTable } from '../utils/types';
-
-const WS_BASE = API_BASE_URL.replace(/\/api$/, '').replace('http', 'ws') + '/ws/restaurant/';
 
 interface OrderData {
   id: number;
@@ -84,7 +82,8 @@ export default function useRestaurantWebSocket({
     if (groups && groups.length > 0) {
       params.set('groups', groups.join(','));
     }
-    const url = `${WS_BASE}?${params.toString()}`;
+    // URL her bağlantıda yeniden üretilir (sunucu değişmiş olabilir)
+    const url = `${getWsUrl('/ws/restaurant/')}?${params.toString()}`;
 
     const ws = new WebSocket(url);
     wsRef.current = ws;
