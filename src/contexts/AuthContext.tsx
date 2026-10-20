@@ -69,15 +69,19 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         branchCode: employee.branchCode || '001',
         staffNumber: employee.staffNumber,
         hireDate: employee.hireDate,
-        hotelId: employee.hotelId || 1,
-        hotelName: employee.hotelName || 'Grand Hotel',
+        hotelId: employee.hotelId as number,
+        hotelName: employee.hotelName || '',
       };
 
-      setUser(userData);
+      // JWT token'ları — backend her başarılı login'de döner. Eksikse oturum
+      // açılmaz (eskiden boş token + hotelId=1 ile devam edilip yanlış otele düşülebiliyordu).
+      const accessToken = (employee as any).access as string | undefined;
+      const refreshToken = (employee as any).refresh as string | undefined;
+      if (!accessToken || !refreshToken || !employee.hotelId) {
+        throw new Error('Giriş yanıtı eksik (token/otel bilgisi yok). Lütfen tekrar deneyin.');
+      }
 
-      // JWT token'ları + kullanıcı bilgilerini sakla
-      const accessToken = (employee as any).access || '';
-      const refreshToken = (employee as any).refresh || '';
+      setUser(userData);
 
       try {
         await AsyncStorage.multiSet([

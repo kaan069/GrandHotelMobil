@@ -1,7 +1,7 @@
 /**
  * useRestaurantWebSocket — Restoran gerçek zamanlı güncellemeleri (Mobile)
  *
- * Backend'deki ws://localhost:8000/ws/restaurant/ adresine bağlanır.
+ * Backend'deki /ws/restaurant/?token=<JWT> adresine bağlanır (otel token'dan okunur).
  * Yeni sipariş, durum değişikliği, masa ve kasa güncellemelerini dinler.
  *
  * Mobil'e özel:
@@ -19,7 +19,11 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
 import { getWsUrl } from '../utils/constants';
+import { refreshAccessToken } from '../services/api';
 import type { ApiTable } from '../utils/types';
+
+/** Backend: token yok/geçersiz (apps/staff/ws_auth.py) → token yenile, tekrar bağlan */
+const WS_CLOSE_UNAUTHORIZED = 4401;
 
 interface OrderData {
   id: number;
@@ -71,14 +75,14 @@ export default function useRestaurantWebSocket({
   const connect = useCallback(async () => {
     if (!enabled) return;
 
-    // Multi-tenant: hotel_id query param zorunlu (backend reddediyor)
+    // Kimlik: access JWT — backend oteli token'dan okur
     const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
-    const hotelId = await AsyncStorage.getItem('grandhotel_mobile_hotel_id');
-    if (!hotelId) {
-      console.warn('[WS Restaurant] hotel_id yok, bağlantı atlandı');
+    const token = await AsyncStorage.getItem('grandhotel_mobile_token');
+    if (!token) {
+      console.warn('[WS Restaurant] token yok, bağlantı atlandı');
       return;
     }
-    const params = new URLSearchParams({ hotel_id: hotelId });
+    const params = new URLSearchParams({ token });
     if (groups && groups.length > 0) {
       params.set('groups', groups.join(','));
     }
@@ -114,7 +118,13 @@ export default function useRestaurantWebSocket({
       }
     };
 
-    ws.onclose = () => {
+    ws.onclose = (event) => {
+      if (event.code === WS_CLOSE_UNAUTHORIZED) {
+        refreshAccessToken().then((ok) => {
+          reconnectTimer.current = setTimeout(connect, ok ? 0 : 30000);
+        });
+        return;
+      }
       reconnectTimer.current = setTimeout(connect, 3000);
     };
 

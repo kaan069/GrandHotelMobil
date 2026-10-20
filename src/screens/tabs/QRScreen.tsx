@@ -12,21 +12,21 @@
  *   - Sürekli okumayı engeller (her tarama sonrası kamera kapanır)
  *   - Race condition'ı önler (useRef ile sync flag)
  *
- * Mesai QR formatı: "mesai:giris" | "mesai:cikis" | "mesai:grandhotel"
+ * Mesai QR formatı: "mesai:<mod>:<otel token'ı>"  (mod: auto | giris | cikis)
+ *   Web → Eleman Yönetimi → Mesai QR diyaloğunda üretilir/yazdırılır.
+ *   Token backend'de personelin oteliyle karşılaştırılır; giriş mi çıkış mı
+ *   ('auto' modunda) backend o günkü kayda göre karar verir.
  */
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, Alert, TouchableOpacity, Animated, Vibration, ActivityIndicator } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 
 import { AppButton } from '../../components/common';
 import { colors, spacing, fontSize, borderRadius } from '../../theme';
-import { SHIFTS_STORAGE_KEY } from '../../utils/constants';
-import { apiClient } from '../../services/api';
+import { attendanceApi } from '../../services/api';
 import useAuth from '../../hooks/useAuth';
-import type { ShiftEntry } from '../tasks/ShiftsScreen';
 
 // NFC — native modül, Expo Go'da çalışmaz
 let NfcManager: any = null;
@@ -52,8 +52,28 @@ interface SuccessInfo {
   time: string;
 }
 
-const MESAI_NFC_PREFIX = 'mesai:';
+const MESAI_PREFIX = 'mesai:';
 const SUCCESS_DISPLAY_MS = 2200;
+
+const MESAI_MODES: Record<string, 'auto' | 'entry' | 'exit'> = {
+  auto: 'auto',
+  giris: 'entry',
+  cikis: 'exit',
+};
+
+/**
+ * "mesai:giris:3fa9…" → { type: 'entry', token: '3fa9…' }
+ * Token'sız eski QR'lar ("mesai:grandhotel", "mesai:giris") → 'legacy'
+ * Mesai QR'ı değilse → null
+ */
+function parseMesaiCode(raw: string): { type: 'auto' | 'entry' | 'exit'; token: string } | 'legacy' | null {
+  const text = raw.trim();
+  if (!text.toLowerCase().startsWith(MESAI_PREFIX)) return null;
+  const [, mode = '', token = ''] = text.split(':');
+  const type = MESAI_MODES[mode.toLowerCase()];
+  if (!type || !token) return 'legacy';
+  return { type, token };
+}
 
 const QRScreen: React.FC = () => {
   const { user } = useAuth();
@@ -146,11 +166,9 @@ const QRScreen: React.FC = () => {
       if (tag?.ndefMessage && tag.ndefMessage.length > 0) {
         const record = tag.ndefMessage[0];
         const text = Ndef.text.decodePayload(new Uint8Array(record.payload));
-        const lower = text.toLowerCase().trim();
 
-        if (lower.startsWith(MESAI_NFC_PREFIX)) {
-          const shiftType = await detectShiftType();
-          await saveShiftEntry(shiftType);
+        if (parseMesaiCode(text)) {
+          await handleMesaiCode(text);
         } else {
           Alert.alert('NFC Okundu', `Veri: ${text}`, [{ text: 'Tamam' }]);
         }
@@ -172,56 +190,38 @@ const QRScreen: React.FC = () => {
     setNfcScanning(false);
   }, []);
 
-  /** Mesai kaydı ekle (Alert YOK — animasyon ile gösterilir) */
-  const saveShiftEntry = async (shiftType: 'entry' | 'exit') => {
-    if (!user) return;
-
-    const newEntry: ShiftEntry = {
-      id: Date.now(),
-      staffNumber: user.staffNumber,
-      staffName: user.name,
-      type: shiftType,
-      timestamp: new Date().toISOString(),
-    };
-
-    try {
-      const stored = await AsyncStorage.getItem(SHIFTS_STORAGE_KEY);
-      const existing: ShiftEntry[] = stored ? JSON.parse(stored) : [];
-      existing.push(newEntry);
-      await AsyncStorage.setItem(SHIFTS_STORAGE_KEY, JSON.stringify(existing));
-    } catch {
-      /* Storage hatası */
-    }
-
-    // Backend devam kaydı (offline ise sessizce geç)
-    try {
-      await apiClient('/staff/attendance/mark/', {
-        method: 'POST',
-        body: JSON.stringify({ staffNumber: user.staffNumber, type: shiftType }),
-      });
-    } catch {
-      /* Çevrimdışı */
-    }
-
-    const time = new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
-    playSuccessAnimation({ type: shiftType, name: user.name, time });
+  /** Taramayı sıfırla (hata/uyarı sonrası) */
+  const resetScan = () => {
+    handlingRef.current = false;
+    setScanning(false);
+    setCameraReady(false);
   };
 
-  /** Bugün açık giriş kaydı var mı kontrol et */
-  const detectShiftType = async (): Promise<'entry' | 'exit'> => {
-    if (!user) return 'entry';
-    try {
-      const stored = await AsyncStorage.getItem(SHIFTS_STORAGE_KEY);
-      const all: ShiftEntry[] = stored ? JSON.parse(stored) : [];
-      const today = new Date().toISOString().split('T')[0];
-      const todayShifts = all.filter(
-        (s) => s.staffNumber === user.staffNumber && s.timestamp.startsWith(today)
+  /**
+   * Mesai QR/NFC içeriğini backend'e gönderir.
+   * Başarılıysa backend'in verdiği tip (giriş/çıkış) ile animasyon gösterilir.
+   * Eskiden hata sessizce yutulup yine "başarılı" gösteriliyordu.
+   */
+  const handleMesaiCode = async (raw: string) => {
+    if (!user) return;
+    const parsed = parseMesaiCode(raw);
+
+    if (parsed === 'legacy') {
+      Alert.alert(
+        'Eski Mesai QR Kodu',
+        'Bu QR kodu artık geçerli değil. Yöneticinizden web panelinden yeni mesai QR kodunu yazdırmasını isteyin.',
+        [{ text: 'Tamam', onPress: resetScan }],
       );
-      const entries = todayShifts.filter((s) => s.type === 'entry').length;
-      const exits = todayShifts.filter((s) => s.type === 'exit').length;
-      return entries > exits ? 'exit' : 'entry';
-    } catch {
-      return 'entry';
+      return;
+    }
+    if (!parsed) return;
+
+    try {
+      const result = await attendanceApi.mark(parsed.token, parsed.type);
+      const time = new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+      playSuccessAnimation({ type: result.type, name: user.name, time });
+    } catch (err: any) {
+      Alert.alert('Mesai Kaydedilemedi', err?.message || 'Bağlantı hatası', [{ text: 'Tamam', onPress: resetScan }]);
     }
   };
 
@@ -231,22 +231,8 @@ const QRScreen: React.FC = () => {
     if (handlingRef.current) return;
     handlingRef.current = true;
 
-    const lower = data.toLowerCase().trim();
-
-    if (
-      lower === 'mesai:grandhotel' ||
-      lower === 'mesai:giris' || lower === 'mesai:entry' ||
-      lower === 'mesai:cikis' || lower === 'mesai:exit'
-    ) {
-      let shiftType: 'entry' | 'exit';
-      if (lower === 'mesai:giris' || lower === 'mesai:entry') {
-        shiftType = 'entry';
-      } else if (lower === 'mesai:cikis' || lower === 'mesai:exit') {
-        shiftType = 'exit';
-      } else {
-        shiftType = await detectShiftType();
-      }
-      await saveShiftEntry(shiftType);
+    if (parseMesaiCode(data)) {
+      await handleMesaiCode(data);
       return;
     }
 

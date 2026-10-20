@@ -16,7 +16,11 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
 import { getWsUrl } from '../utils/constants';
+import { refreshAccessToken } from '../services/api';
 import type { ApiRoom } from '../utils/types';
+
+/** Backend: token yok/geçersiz (apps/staff/ws_auth.py) → token yenile, tekrar bağlan */
+const WS_CLOSE_UNAUTHORIZED = 4401;
 
 interface UseRoomWebSocketOptions {
   onRoomUpdate: (room: ApiRoom) => void;
@@ -32,15 +36,15 @@ export default function useRoomWebSocket({ onRoomUpdate, enabled = true }: UseRo
   const connect = useCallback(async () => {
     if (!enabled) return;
 
-    // Multi-tenant: hotel_id query param zorunlu (backend reddediyor)
+    // Kimlik: access JWT — backend oteli token'dan okur
     const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
-    const hotelId = await AsyncStorage.getItem('grandhotel_mobile_hotel_id');
-    if (!hotelId) {
-      console.warn('[WS] hotel_id yok, bağlantı atlandı');
+    const token = await AsyncStorage.getItem('grandhotel_mobile_token');
+    if (!token) {
+      console.warn('[WS] token yok, bağlantı atlandı');
       return;
     }
     // URL her bağlantıda yeniden üretilir (sunucu değişmiş olabilir)
-    const url = `${getWsUrl('/ws/rooms/')}?hotel_id=${encodeURIComponent(hotelId)}`;
+    const url = `${getWsUrl('/ws/rooms/')}?token=${encodeURIComponent(token)}`;
 
     const ws = new WebSocket(url);
     wsRef.current = ws;
@@ -60,7 +64,13 @@ export default function useRoomWebSocket({ onRoomUpdate, enabled = true }: UseRo
       }
     };
 
-    ws.onclose = () => {
+    ws.onclose = (event) => {
+      if (event.code === WS_CLOSE_UNAUTHORIZED) {
+        refreshAccessToken().then((ok) => {
+          reconnectTimer.current = setTimeout(connect, ok ? 0 : 30000);
+        });
+        return;
+      }
       reconnectTimer.current = setTimeout(connect, 3000);
     };
 

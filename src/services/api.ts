@@ -808,7 +808,27 @@ export interface ApiAttendanceLog {
   workedHours: string | null;
 }
 
+/** Mesai kaydı sonucu — type: backend'in karar verdiği giriş/çıkış */
+export interface AttendanceMarkResult {
+  date: string;
+  type: 'entry' | 'exit';
+  checkInTime: string | null;
+  checkOutTime: string | null;
+  workedHours: string | null;
+  status: string;
+}
+
 export const attendanceApi = {
+  /**
+   * QR/NFC ile giriş-çıkış. Kişi token'dan, otel QR token'ından doğrulanır.
+   * type 'auto' → backend o günkü kayda göre giriş mi çıkış mı karar verir.
+   */
+  mark: (qrToken: string, type: 'entry' | 'exit' | 'auto') =>
+    apiClient<AttendanceMarkResult>('/staff/attendance/mark/', {
+      method: 'POST',
+      body: JSON.stringify({ qrToken, type }),
+    }),
+
   getForEmployee: (employeeId: number, dateFrom?: string, dateTo?: string) => {
     const params = new URLSearchParams();
     if (dateFrom) params.append('dateFrom', dateFrom);
