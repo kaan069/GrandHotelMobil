@@ -27,7 +27,7 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { EmptyState, LoadingState } from '../../components/common';
 import { colors, spacing, fontSize, borderRadius } from '../../theme';
-import { roomsApi, menuApi, apiClient } from '../../services/api';
+import { roomsApi, menuApi, qrApi } from '../../services/api';
 import type { ApiMenuCategory, ApiMenuItem } from '../../utils/types';
 import useAuth from '../../hooks/useAuth';
 
@@ -144,14 +144,10 @@ const RoomServiceScreen: React.FC<Props> = ({ onClose }) => {
     if (!selectedRoom || cart.length === 0) return;
     setSubmitting(true);
     try {
-      const result = await apiClient<{ tabNo: string; totalAmount: string }>(
-        `/restaurant/qr/room/${selectedRoom.roomNumber}/order/`,
-        {
-          method: 'POST',
-          body: JSON.stringify({
-            items: cart.map(c => ({ menuItemId: c.menuItemId, quantity: c.quantity, notes: '' })),
-          }),
-        }
+      const result = await qrApi.placeRoomOrder(
+        selectedRoom.roomNumber,
+        { items: cart.map(c => ({ menuItemId: c.menuItemId, quantity: c.quantity, notes: '' })) },
+        user?.branchCode,
       );
       Alert.alert(
         'Sipariş Gönderildi',

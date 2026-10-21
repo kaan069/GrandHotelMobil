@@ -12,6 +12,7 @@ import React, { createContext, useState, useCallback, useEffect, ReactNode } fro
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { Role } from '../utils/constants';
 import { staffApi, setAuthExpiredHandler } from '../services/api';
+import { hydrateChoiceLabels } from '../utils/choices';
 
 export interface User {
   id: number;
@@ -93,6 +94,8 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       } catch {
         /* Storage kullanılamıyorsa oturum sadece bellekte tutulur */
       }
+      // Token'lar kaydedildikten sonra: etiketleri backend'den güncelle (hata olursa yerel kalır)
+      hydrateChoiceLabels().catch(() => {});
       return userData;
     } finally {
       setLoading(false);
@@ -125,6 +128,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       const saved = await AsyncStorage.getItem(STORAGE_KEY);
       if (saved) {
         setUser(JSON.parse(saved));
+        hydrateChoiceLabels().catch(() => {});
       }
     } catch {
       /* Hata durumunda oturumsuz devam et */

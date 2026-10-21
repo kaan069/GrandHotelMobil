@@ -34,6 +34,13 @@ import type {
   ApiMenuItem,
 } from '../utils/types';
 import type { Fault } from '../components/tasks/FaultDetailView';
+import type { components } from './generated/schema';
+
+/**
+ * Backend OpenAPI şemasından üretilen tipler (src/services/generated/schema.ts).
+ * Elle düzenlenmez — backend değişince: npm run gen:api
+ */
+type Schemas = components['schemas'];
 
 /* ==================== BASE CLIENT ==================== */
 
@@ -83,24 +90,42 @@ export async function apiClient<T>(endpoint: string, options?: RequestInit, _ret
 
   // Hata durumunda backend'in döndüğü error mesajını al
   if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-
-    // Django REST Framework field-level errors: { "field": ["msg"] }
-    if (!errorData.error && typeof errorData === 'object') {
-      const fieldErrors = Object.entries(errorData)
-        .filter(([key]) => key !== 'requireForce' && key !== 'balance')
-        .map(([key, val]) => `${key}: ${Array.isArray(val) ? val.join(', ') : val}`)
-        .join('\n');
-      if (fieldErrors) throw new Error(fieldErrors);
-    }
-
-    const err: any = new Error(errorData.error || `API Hatası: ${response.status}`);
-    if (errorData.requireForce) err.requireForce = true;
-    if (errorData.balance) err.balance = errorData.balance;
-    throw err;
+    throw await _toApiError(response);
   }
 
   return response.json();
+}
+
+/* ==================== HATA BİÇİMİ ==================== */
+
+/**
+ * API hatası. Backend tüm hatalarda aynı biçimi döner (config/exception_handler.py):
+ *   { error: "Kullanıcıya gösterilecek mesaj", code: "invalid" | "permission_denied" | ..., fields?: {alan: [mesaj]} }
+ * View'ların eklediği alanlar (requireForce, balance — check-out bakiye uyarısı) korunur.
+ * Webdeki karşılığı: grandhotel-web/src/utils/apiError.ts
+ */
+export interface ApiError extends Error {
+  status: number;
+  code?: string;
+  fields?: Record<string, string[]>;
+  requireForce?: boolean;
+  balance?: number;
+}
+
+async function _toApiError(response: Response): Promise<ApiError> {
+  const data: Record<string, any> = await response.json().catch(() => ({}));
+  // Eski sunucu sürümleri alan hatalarını "error" olmadan dönebilir → ilk alan mesajı
+  const firstField = data.error || data.detail ? null : Object.entries(data).find(([, v]) => Array.isArray(v));
+  const message = data.error || data.detail
+    || (firstField ? `${firstField[0]}: ${(firstField[1] as string[]).join(', ')}` : `API Hatası: ${response.status}`);
+
+  const err = new Error(message) as ApiError;
+  err.status = response.status;
+  if (data.code) err.code = data.code;
+  if (data.fields) err.fields = data.fields;
+  if (data.requireForce) err.requireForce = true;
+  if (data.balance) err.balance = data.balance;
+  return err;
 }
 
 /* ==================== OTURUM YARDIMCILARI ==================== */
@@ -187,6 +212,15 @@ async function _doRefresh(): Promise<boolean> {
     return false;
   }
 }
+
+/* ==================== META (ORTAK SABİTLER) ==================== */
+
+/** GET /api/meta/choices/ — roller, durumlar, kategoriler: { anahtar: [{value, label}] } */
+export type MetaChoices = Schemas['MetaChoices'];
+
+export const metaApi = {
+  getChoices: () => apiClient<MetaChoices>('/meta/choices/'),
+};
 
 /* ==================== ROOMS API ==================== */
 
@@ -605,7 +639,7 @@ export const kazancApi = {
    * Otomatik gün sonu durumu (salt okunur).
    * Saati değiştirmek web panelinden yapılır; mobil sadece bilgilendirir.
    */
-  nightAuditSchedule: () =>
+  getNightAuditSchedule: () =>
     apiClient<NightAuditSchedule>('/kazanc/night-audit-schedule/'),
 
   /**
@@ -640,34 +674,16 @@ export const kazancApi = {
 
 /* ==================== STAFF (PERSONEL) API ==================== */
 
-export interface ApiEmployee {
-  id: number;
-  firstName: string;
-  lastName: string;
-  fullName: string;
-  phone: string;
-  password: string;
-  staffNumber: string;
-  hireDate: string;
-  status: string;
-  roles: string[];
-  roleLabels: string[];
-  salary?: number | string | null;
-  consecutiveWorkDays?: number;
-  totalWorkDays?: number;
-  weeklyLeaveEarned?: number;
-  weeklyLeaveUsed?: number;
-  weeklyLeaveRemaining?: number;
-  annualLeaveEntitlement?: number;
-  usedAnnualLeave?: number;
-  remainingAnnualLeave?: number;
-  isOnLeaveToday?: boolean;
-  enabledModules?: string[];
-  branchCode?: string;
-  hotelId?: number;
-  hotelName?: string;
-  createdAt: string;
-}
+/**
+ * Personel — backend EmployeeSerializer'dan üretilir (web ve mobil aynı tip).
+ * Otel/oturum alanları sadece login/me yanıtında gelir → opsiyonel.
+ * salary sadece yöneticiye ve kişinin kendisine döner → opsiyonel.
+ */
+export type ApiEmployee = Schemas['Employee']
+  & Partial<Pick<Schemas['EmployeeSession'], 'hotelId' | 'hotelName' | 'branchCode' | 'enabledModules' | 'isBmsAdmin'>>;
+
+/** POST /api/staff/login/ yanıtı (personel + otel + JWT çifti) */
+export type ApiLoginResponse = Schemas['EmployeeLoginResponse'];
 
 export interface ApiTaskAssignment {
   id: number;
@@ -723,7 +739,7 @@ export const staffApi = {
     apiClient<void>(`/staff/${id}/`, { method: 'DELETE' }),
 
   login: (data: { branchCode: string; staffNumber: string; password: string }) =>
-    apiClient<ApiEmployee>('/staff/login/', { method: 'POST', body: JSON.stringify(data) }),
+    apiClient<ApiLoginResponse>('/staff/login/', { method: 'POST', body: JSON.stringify(data) }),
 
   subordinates: (id: number) =>
     apiClient<ApiEmployee[]>(`/staff/${id}/subordinates/`),
@@ -864,8 +880,7 @@ async function apiMultipart<T>(endpoint: string, formData: FormData, method = 'P
   }
 
   if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.error || `API Hatası: ${response.status}`);
+    throw await _toApiError(response);
   }
 
   return response.json();
@@ -985,8 +1000,8 @@ export const minibarApi = {
   getProducts: () =>
     apiClient<MinibarProduct[]>('/minibar/products/'),
 
-  /** Bir odanın minibar içeriğini getir */
-  getRoomMinibar: (roomId: number) =>
+  /** Bir odanın minibar içeriğini getir (web: minibarApi.getRoomItems) */
+  getRoomItems: (roomId: number) =>
     apiClient<RoomMinibarItem[]>(`/minibar/rooms/${roomId}/`),
 
   /** Odanın minibarına ürün ekle */
@@ -1088,6 +1103,58 @@ export const tabsApi = {
     apiClient(`/tabs/${tabId}/split/`, { method: 'POST', body: JSON.stringify({ itemIds, guestName }) }),
 };
 
+/* --- Mutfak / Sipariş Kalemleri --- */
+
+/** Mutfak sipariş kalemi — backend OrderItemStatusSerializer'dan üretilir */
+export type ApiOrderItemStatus = Schemas['OrderItemStatus'];
+
+/** Web: kitchenApi (api/services.ts) ile aynı isim ve imzalar */
+export const kitchenApi = {
+  getOrders: (filters?: { status?: string; serviceAreaId?: number; tabId?: number }) => {
+    const params = new URLSearchParams();
+    if (filters?.status) params.append('status', filters.status);
+    if (filters?.serviceAreaId) params.append('serviceAreaId', String(filters.serviceAreaId));
+    if (filters?.tabId) params.append('tabId', String(filters.tabId));
+    const qs = params.toString();
+    return apiClient<ApiOrderItemStatus[]>(`/order-items/${qs ? '?' + qs : ''}`);
+  },
+  startPreparing: (id: number, preparedById?: number) =>
+    apiClient<ApiOrderItemStatus>(`/order-items/${id}/start/`, { method: 'POST', body: JSON.stringify({ preparedById }) }),
+  markReady: (id: number) =>
+    apiClient<ApiOrderItemStatus>(`/order-items/${id}/ready/`, { method: 'POST' }),
+  markServed: (id: number) =>
+    apiClient<ApiOrderItemStatus>(`/order-items/${id}/serve/`, { method: 'POST' }),
+  cancelItem: (id: number, reason?: string) =>
+    apiClient<ApiOrderItemStatus>(`/order-items/${id}/cancel/`, { method: 'POST', body: JSON.stringify({ reason }) }),
+  getSummary: () =>
+    apiClient<{ pending: number; preparing: number; ready: number; served: number; cancelled: number; total: number }>(
+      '/order-items/kitchen-summary/',
+    ),
+};
+
+/* --- Oda QR siparişi --- */
+
+/**
+ * Web: qrApi (api/services.ts) ile aynı isim ve imzalar.
+ * branch: şube kodu — aynı oda numarası birden fazla otelde varsa backend hangi
+ * otel olduğunu buradan anlar (personel kendi branchCode'unu gönderir).
+ */
+export const qrApi = {
+  getRoomMenu: (roomNumber: string, branch?: string) =>
+    apiClient<Record<string, unknown>>(
+      `/restaurant/qr/room/${encodeURIComponent(roomNumber)}/menu/${branch ? `?branch=${encodeURIComponent(branch)}` : ''}`,
+    ),
+  placeRoomOrder: (
+    roomNumber: string,
+    data: { items: Array<{ menuItemId: number; quantity: number; notes?: string }> },
+    branch?: string,
+  ) =>
+    apiClient<{ tabNo: string; totalAmount: string; message?: string }>(
+      `/restaurant/qr/room/${encodeURIComponent(roomNumber)}/order/${branch ? `?branch=${encodeURIComponent(branch)}` : ''}`,
+      { method: 'POST', body: JSON.stringify(data) },
+    ),
+};
+
 /** Menü yönetimi */
 export const menuApi = {
   getCategories: () => apiClient<ApiMenuCategory[]>('/menu-categories/'),
@@ -1167,25 +1234,8 @@ export interface ApiInvoice {
   items: ApiInvoiceItem[];
 }
 
-export interface InvoicePrepareResponse {
-  roomNumber: string;
-  reservationId: number;
-  guests: Array<{ id: number; name: string; tcNo: string; phone: string; email: string; companyId: number | null; companyName: string | null }>;
-  customerType: 'individual' | 'company';
-  customerName: string;
-  taxNumber: string;
-  taxOffice: string;
-  address: string;
-  phone: string;
-  email: string;
-  companyId: number | null;
-  guestId: number;
-  notes: string;
-  folioItems: Array<{ description: string; category: string; amount: string; date: string }>;
-  folioTotal: string;
-  hasAccommodationTax: boolean;
-  accommodationTaxRate: number;
-}
+/** GET /api/invoices/prepare/{roomId}/ yanıtı — backend InvoicePrepareResponseSerializer'dan üretilir */
+export type InvoicePrepareResponse = Schemas['InvoicePrepareResponse'];
 
 export interface InvoiceCreatePayload {
   type: 'sales';

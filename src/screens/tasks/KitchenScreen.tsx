@@ -27,46 +27,17 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { LoadingState, EmptyState } from '../../components/common';
 import { colors, spacing, fontSize, borderRadius } from '../../theme';
-import { serviceAreasApi, apiClient } from '../../services/api';
+import { serviceAreasApi, kitchenApi } from '../../services/api';
+import type { ApiOrderItemStatus } from '../../services/api';
 import type { ApiServiceArea } from '../../utils/types';
 import useRestaurantWebSocket from '../../hooks/useRestaurantWebSocket';
 import useAudioNotification from '../../hooks/useAudioNotification';
 
-interface OrderItem {
-  id: number;
-  tabItemId: number;
-  itemDescription: string;
-  itemQuantity: number;
-  tabId: number;
-  tabNo: string;
-  tableNumber: string | null;
-  roomNumber: string | null;
-  servicePoint: string;
-  guestName: string;
-  status: string;
-  notes: string;
-  sentToKitchenAt: string;
-  [key: string]: unknown;
-}
+/** Backend OrderItemStatusSerializer'dan üretilen tip (elle tanım yerine — ayrışmasın) */
+type OrderItem = ApiOrderItemStatus;
 
 interface Props {
   onClose: () => void;
-}
-
-/** API fetch for orders */
-async function fetchKitchenOrders(filters?: { status?: string; serviceAreaId?: number }): Promise<OrderItem[]> {
-  const params = new URLSearchParams();
-  if (filters?.status) params.append('status', filters.status);
-  if (filters?.serviceAreaId) params.append('serviceAreaId', String(filters.serviceAreaId));
-  const qs = params.toString();
-  return apiClient<OrderItem[]>(`/order-items/${qs ? '?' + qs : ''}`);
-}
-
-async function kitchenAction(id: number, action: string, body?: object): Promise<OrderItem> {
-  return apiClient<OrderItem>(`/order-items/${id}/${action}/`, {
-    method: 'POST',
-    body: body ? JSON.stringify(body) : undefined,
-  });
 }
 
 const getElapsedMinutes = (sentAt: string): number =>
@@ -78,7 +49,7 @@ const getTimeColor = (minutes: number): string => {
   return '#22c55e';
 };
 
-const getStatusColor = (status: string): string => {
+const getStatusColor = (status?: string): string => {
   switch (status) {
     case 'pending': return '#ef4444';
     case 'preparing': return '#f59e0b';
@@ -120,8 +91,8 @@ const KitchenScreen: React.FC<Props> = ({ onClose }) => {
     try {
       const filters: { serviceAreaId?: number } = {};
       if (selectedArea) filters.serviceAreaId = selectedArea;
-      const data = await fetchKitchenOrders(filters);
-      setOrders(data.filter((o) => ['pending', 'preparing', 'ready'].includes(o.status)));
+      const data = await kitchenApi.getOrders(filters);
+      setOrders(data.filter((o) => ['pending', 'preparing', 'ready'].includes(o.status ?? '')));
     } catch (err) {
       console.error('Siparişler yüklenemedi:', err);
     } finally {
@@ -156,7 +127,7 @@ const KitchenScreen: React.FC<Props> = ({ onClose }) => {
   /** Hazırlamaya başla */
   const handleStart = async (id: number) => {
     try {
-      const updated = await kitchenAction(id, 'start');
+      const updated = await kitchenApi.startPreparing(id);
       setOrders((prev) => prev.map((o) => (o.id === id ? updated : o)));
     } catch {
       Alert.alert('Hata', 'Başlatılamadı');
@@ -166,7 +137,7 @@ const KitchenScreen: React.FC<Props> = ({ onClose }) => {
   /** Hazır */
   const handleReady = async (id: number) => {
     try {
-      const updated = await kitchenAction(id, 'ready');
+      const updated = await kitchenApi.markReady(id);
       setOrders((prev) => prev.map((o) => (o.id === id ? updated : o)));
     } catch {
       Alert.alert('Hata', 'Hazır işaretlenemedi');
@@ -181,7 +152,7 @@ const KitchenScreen: React.FC<Props> = ({ onClose }) => {
         text: 'Evet', style: 'destructive',
         onPress: async () => {
           try {
-            const updated = await kitchenAction(id, 'cancel', { reason: 'Mutfak iptal' });
+            const updated = await kitchenApi.cancelItem(id, 'Mutfak iptal');
             setOrders((prev) => prev.map((o) => (o.id === id ? updated : o)));
           } catch {
             Alert.alert('Hata', 'İptal edilemedi');

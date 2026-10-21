@@ -20,27 +20,17 @@ import { useEffect, useRef, useCallback } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
 import { getWsUrl } from '../utils/constants';
 import { refreshAccessToken } from '../services/api';
+import type { ApiOrderItemStatus } from '../services/api';
 import type { ApiTable } from '../utils/types';
 
 /** Backend: token yok/geçersiz (apps/staff/ws_auth.py) → token yenile, tekrar bağlan */
 const WS_CLOSE_UNAUTHORIZED = 4401;
 
-interface OrderData {
-  id: number;
-  tabItemId: number;
-  itemDescription: string;
-  itemQuantity: number;
-  tabId: number;
-  tabNo: string;
-  tableNumber: string | null;
-  roomNumber: string | null;
-  servicePoint: string;
-  guestName: string;
-  status: string;
-  notes: string;
-  sentToKitchenAt: string;
-  [key: string]: unknown;
-}
+/**
+ * WS sipariş verisi — backend REST ile aynı OrderItemStatusSerializer çıktısını
+ * yayınlar (apps/restaurant/broadcast.py), bu yüzden tip de aynıdır.
+ */
+type OrderData = ApiOrderItemStatus;
 
 interface UseRestaurantWebSocketOptions {
   onNewOrder?: (order: OrderData) => void;

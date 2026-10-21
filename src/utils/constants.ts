@@ -19,6 +19,7 @@ export const ROLES = {
   TECHNICIAN: 'technician',
   SECURITY: 'security',
   ACCOUNTANT: 'accountant',
+  ACCOUNTING_MANAGER: 'accounting_manager',
   LOBBY: 'lobby',
   BARISTA: 'barista',
   BARMAN: 'barman',
@@ -41,6 +42,7 @@ export const ROLE_LABELS: Record<string, string> = {
   [ROLES.TECHNICIAN]: 'Teknik',
   [ROLES.SECURITY]: 'Güvenlik',
   [ROLES.ACCOUNTANT]: 'Muhasebe',
+  [ROLES.ACCOUNTING_MANAGER]: 'Muhasebe Müdürü',
   [ROLES.LOBBY]: 'Lobi',
   [ROLES.BARISTA]: 'Barista',
   [ROLES.BARMAN]: 'Barmen',
@@ -146,9 +148,10 @@ export const STOCK_CATEGORIES: readonly LabelValueOption[] = [
 /* ==================== İZİN TİPLERİ ==================== */
 
 export const LEAVE_TYPES: readonly LabelValueOption[] = [
+  // Backend Leave.TYPE_CHOICES ile aynı (eskiden backend'de olmayan sick/personal vardı)
+  { value: 'weekly', label: 'Haftalık İzin' },
   { value: 'annual', label: 'Yıllık İzin' },
-  { value: 'sick', label: 'Hastalık İzni' },
-  { value: 'personal', label: 'Mazeret İzni' },
+  { value: 'daily', label: 'Günlük İzin' },
   { value: 'unpaid', label: 'Ücretsiz İzin' },
 ];
 
@@ -308,11 +311,11 @@ export const FOLIO_CATEGORIES: readonly LabelValueOption[] = [
   { value: 'room_charge', label: 'Oda Ücreti' },
   { value: 'minibar', label: 'Minibar' },
   { value: 'restaurant', label: 'Restoran/Kafe' },
-  { value: 'service', label: 'Hizmet/Servis' },
+  { value: 'service', label: 'Ek Hizmet' },
   { value: 'discount', label: 'İndirim' },
   { value: 'payment', label: 'Ödeme' },
-  { value: 'account_transfer_debit', label: 'Cariye Borçlu Aktar' },
-  { value: 'account_transfer_credit', label: 'Cariye Alacaklı Aktar' },
+  { value: 'account_transfer_debit', label: 'Cariye Borçlu Aktarım' },
+  { value: 'account_transfer_credit', label: 'Cariye Alacaklı Aktarım' },
 ];
 
 /** Backend FolioItem.CATEGORY_CHOICES ve webdeki FOLIO_CATEGORIES ile aynı anahtarlar */
@@ -320,11 +323,11 @@ export const FOLIO_CATEGORY_LABELS: Record<string, string> = {
   room_charge: 'Oda Ücreti',
   minibar: 'Minibar',
   restaurant: 'Restoran/Kafe',
-  service: 'Hizmet/Servis',
+  service: 'Ek Hizmet',
   discount: 'İndirim',
   payment: 'Ödeme',
-  account_transfer_debit: 'Cariye Borçlu Aktar',
-  account_transfer_credit: 'Cariye Alacaklı Aktar',
+  account_transfer_debit: 'Cariye Borçlu Aktarım',
+  account_transfer_credit: 'Cariye Alacaklı Aktarım',
 };
 
 /* ==================== UYGULAMA AYARLARI ==================== */

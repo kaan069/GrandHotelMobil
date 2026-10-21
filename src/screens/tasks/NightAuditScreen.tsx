@@ -75,7 +75,7 @@ const NightAuditScreen: React.FC<Props> = ({ onClose }) => {
       const [data, scheduleData] = await Promise.all([
         kazancApi.nightAuditPreview(),
         // Otomatik durumu bilgi amaçlı — alınamazsa ekran yine de açılır
-        kazancApi.nightAuditSchedule().catch(() => null),
+        kazancApi.getNightAuditSchedule().catch(() => null),
       ]);
       setOccupiedRooms(data.occupiedRooms || []);
       setNoShowRooms(data.noShowRooms || []);

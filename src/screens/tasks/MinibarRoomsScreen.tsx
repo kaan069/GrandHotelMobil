@@ -63,7 +63,7 @@ const MinibarRoomsScreen: React.FC<Props> = ({ onClose }) => {
       const withMinibar = await Promise.all(
         occupiedRooms.map(async (room: RoomItem) => {
           try {
-            const items = await minibarApi.getRoomMinibar(room.id);
+            const items = await minibarApi.getRoomItems(room.id);
             return { ...room, minibarCount: Array.isArray(items) ? items.length : 0 };
           } catch {
             return { ...room, minibarCount: 0 };

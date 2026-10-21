@@ -45,7 +45,7 @@ const RoomMinibarView: React.FC<RoomMinibarViewProps> = ({
 
   const loadMinibar = useCallback(async () => {
     try {
-      const data = await minibarApi.getRoomMinibar(roomId);
+      const data = await minibarApi.getRoomItems(roomId);
       setItems(data);
     } catch {
       setItems([]);
