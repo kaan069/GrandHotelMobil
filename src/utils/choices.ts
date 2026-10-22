@@ -31,7 +31,14 @@ import {
   STOCK_UNITS,
   STOCK_CATEGORIES,
   LEAVE_TYPES,
+  LEAVE_TYPE_LABELS,
+  LEAVE_STATUS_LABELS,
   TABLE_STATUS_LABELS,
+  INVOICE_STATUS_LABELS,
+  INVOICE_TYPE_LABELS,
+  INVOICE_DOCUMENT_TYPE_LABELS,
+  EXPENSE_CATEGORIES,
+  EXPENSE_PAYMENT_METHODS,
   LabelValueOption,
 } from './constants';
 
@@ -46,6 +53,11 @@ const LABEL_MAPS: [ChoiceKey, Record<string, string>][] = [
   ['folioCategories', FOLIO_CATEGORY_LABELS],
   ['paymentMethods', PAYMENT_METHOD_LABELS],
   ['faultStatus', FAULT_STATUS_LABELS],
+  ['leaveTypes', LEAVE_TYPE_LABELS],
+  ['leaveStatus', LEAVE_STATUS_LABELS],
+  ['invoiceStatus', INVOICE_STATUS_LABELS],
+  ['invoiceTypes', INVOICE_TYPE_LABELS],
+  ['invoiceDocumentTypes', INVOICE_DOCUMENT_TYPE_LABELS],
 ];
 
 /** [{value, label}] seçici listeleri — sadece mevcut seçeneklerin etiketi güncellenir */
@@ -55,6 +67,8 @@ const OPTION_LISTS: [ChoiceKey, readonly LabelValueOption[]][] = [
   ['stockUnits', STOCK_UNITS],
   ['stockCategories', STOCK_CATEGORIES],
   ['leaveTypes', LEAVE_TYPES],
+  ['expenseCategories', EXPENSE_CATEGORIES],
+  ['expensePaymentMethods', EXPENSE_PAYMENT_METHODS],
 ];
 
 /**

@@ -53,6 +53,14 @@ import MinibarRoomsScreen from '../tasks/MinibarRoomsScreen';
 import HotelManagementScreen from '../tasks/HotelManagementScreen';
 import RoomSettingsScreen from '../tasks/RoomSettingsScreen';
 import NightAuditScreen from '../tasks/NightAuditScreen';
+import GuestListScreen from '../tasks/GuestListScreen';
+import AgencyScreen from '../tasks/AgencyScreen';
+import InvoiceListScreen from '../tasks/InvoiceListScreen';
+import AccountingScreen from '../tasks/AccountingScreen';
+import CashRegisterScreen from '../tasks/CashRegisterScreen';
+import ShiftHandoverScreen from '../tasks/ShiftHandoverScreen';
+import MenuManagementScreen from '../tasks/MenuManagementScreen';
+import CommissionScreen from '../tasks/CommissionScreen';
 
 interface TaskModule {
   id: string;
@@ -74,6 +82,7 @@ const TASK_MODULES: Record<string, TaskModule[]> = {
     { id: 'tables', label: 'Masalar', icon: 'grid-outline', color: '#06B6D4', screen: 'Tables', module: 'restaurant' },
     { id: 'shopping', label: 'Alışveriş Listesi', icon: 'cart-outline', color: '#22C55E', screen: 'ShoppingList', module: 'restaurant' },
     { id: 'meal', label: 'Yemek Programı', icon: 'restaurant-outline', color: '#F59E0B', screen: 'MealProgram', module: 'restaurant' },
+    { id: 'menu-mgmt', label: 'Menü Yönetimi', icon: 'book-outline', color: '#B45309', screen: 'MenuManagement', module: 'restaurant' },
     { id: 'fault-create', label: 'Arıza Bildir', icon: 'warning-outline', color: '#EF4444', screen: 'FaultCreate', module: 'staff' },
   ],
   [ROLES.WAITER]: [
@@ -86,29 +95,37 @@ const TASK_MODULES: Record<string, TaskModule[]> = {
   ],
   [ROLES.CASHIER]: [
     { id: 'tables', label: 'Masalar', icon: 'grid-outline', color: '#06B6D4', screen: 'Tables', module: 'restaurant' },
+    { id: 'kasa', label: 'Kasa', icon: 'wallet-outline', color: '#16A34A', screen: 'CashRegister', module: 'restaurant' },
     { id: 'my-tasks', label: 'Görevlerim', icon: 'clipboard-outline', color: '#1565C0', screen: 'MyTasks', module: 'staff' },
     { id: 'fault-create', label: 'Arıza Bildir', icon: 'warning-outline', color: '#EF4444', screen: 'FaultCreate', module: 'staff' },
   ],
   [ROLES.BARISTA]: [
     { id: 'my-tasks', label: 'Görevlerim', icon: 'clipboard-outline', color: '#1565C0', screen: 'MyTasks', module: 'staff' },
     { id: 'tables', label: 'Masalar', icon: 'grid-outline', color: '#06B6D4', screen: 'Tables', module: 'restaurant' },
+    { id: 'kasa', label: 'Kasa', icon: 'wallet-outline', color: '#16A34A', screen: 'CashRegister', module: 'restaurant' },
     { id: 'meal', label: 'Yemek Programı', icon: 'restaurant-outline', color: '#F59E0B', screen: 'MealProgram', module: 'restaurant' },
+    { id: 'menu-mgmt', label: 'Menü Yönetimi', icon: 'book-outline', color: '#B45309', screen: 'MenuManagement', module: 'restaurant' },
     { id: 'fault-create', label: 'Arıza Bildir', icon: 'warning-outline', color: '#EF4444', screen: 'FaultCreate', module: 'staff' },
   ],
   [ROLES.BARMAN]: [
     { id: 'my-tasks', label: 'Görevlerim', icon: 'clipboard-outline', color: '#1565C0', screen: 'MyTasks', module: 'staff' },
     { id: 'tables', label: 'Masalar', icon: 'grid-outline', color: '#06B6D4', screen: 'Tables', module: 'restaurant' },
+    { id: 'kasa', label: 'Kasa', icon: 'wallet-outline', color: '#16A34A', screen: 'CashRegister', module: 'restaurant' },
     { id: 'meal', label: 'Yemek Programı', icon: 'restaurant-outline', color: '#F59E0B', screen: 'MealProgram', module: 'restaurant' },
+    { id: 'menu-mgmt', label: 'Menü Yönetimi', icon: 'book-outline', color: '#B45309', screen: 'MenuManagement', module: 'restaurant' },
     { id: 'fault-create', label: 'Arıza Bildir', icon: 'warning-outline', color: '#EF4444', screen: 'FaultCreate', module: 'staff' },
   ],
   [ROLES.RESTAURANT_MANAGER]: [
     { id: 'tables', label: 'Masalar', icon: 'grid-outline', color: '#06B6D4', screen: 'Tables', module: 'restaurant' },
+    { id: 'kasa', label: 'Kasa', icon: 'wallet-outline', color: '#16A34A', screen: 'CashRegister', module: 'restaurant' },
     { id: 'kitchen', label: 'Mutfak Ekranı', icon: 'flame-outline', color: '#EF4444', screen: 'Kitchen', module: 'restaurant' },
     { id: 'my-tasks', label: 'Görevlerim', icon: 'clipboard-outline', color: '#1565C0', screen: 'MyTasks', module: 'staff' },
     { id: 'create-task', label: 'Görev Ata', icon: 'add-circle-outline', color: '#E91E63', screen: 'CreateTask', module: 'staff' },
     { id: 'shopping', label: 'Alışveriş Listesi', icon: 'cart-outline', color: '#22C55E', screen: 'ShoppingList', module: 'restaurant' },
     { id: 'meal', label: 'Yemek Programı', icon: 'restaurant-outline', color: '#F59E0B', screen: 'MealProgram', module: 'restaurant' },
     { id: 'stock', label: 'Stok Yönetimi', icon: 'cube-outline', color: '#EC4899', screen: 'Stock', module: 'minibar' },
+    { id: 'menu-mgmt', label: 'Menü Yönetimi', icon: 'book-outline', color: '#B45309', screen: 'MenuManagement', module: 'restaurant' },
+    { id: 'commissions', label: 'Komisyonlar', icon: 'trending-up-outline', color: '#9333EA', screen: 'Commission', module: 'restaurant' },
     { id: 'fault-create', label: 'Arıza Bildir', icon: 'warning-outline', color: '#EF4444', screen: 'FaultCreate', module: 'staff' },
   ],
   [ROLES.TECHNICIAN]: [
@@ -137,9 +154,52 @@ const TASK_MODULES: Record<string, TaskModule[]> = {
     { id: 'room-status', label: 'Oda Durumu', icon: 'bed-outline', color: '#06B6D4', screen: 'RoomStatus', module: 'base' },
     { id: 'companies', label: 'Firma Yönetimi', icon: 'business-outline', color: '#1565C0', screen: 'Companies', module: 'base' },
     { id: 'debtors', label: 'Borçlular', icon: 'cash-outline', color: '#DC2626', screen: 'Debtors', module: 'base' },
-    { id: 'reservations', label: 'Rezervasyon Geçmişi', icon: 'time-outline', color: '#7C3AED', screen: 'ReservationHistory', module: 'base' },
+    { id: 'reservations', label: 'Rezervasyonlar', icon: 'time-outline', color: '#7C3AED', screen: 'ReservationHistory', module: 'base' },
+    { id: 'guests', label: 'Müşteri Listesi', icon: 'people-circle-outline', color: '#0EA5E9', screen: 'GuestList', module: 'base' },
+    { id: 'agencies', label: 'Acenteler', icon: 'globe-outline', color: '#14B8A6', screen: 'Agencies', module: 'base' },
+    { id: 'invoices', label: 'Faturalar', icon: 'receipt-outline', color: '#F59E0B', screen: 'Invoices', module: 'invoices' },
     { id: 'meal', label: 'Yemek Programı', icon: 'restaurant-outline', color: '#F59E0B', screen: 'MealProgram', module: 'restaurant' },
+    { id: 'shift-handover', label: 'Mesai Devri', icon: 'swap-horizontal-outline', color: '#0D9488', screen: 'ShiftHandover', module: 'staff' },
     { id: 'night-audit', label: 'Gün Sonu', icon: 'moon-outline', color: '#1E293B', screen: 'NightAudit', module: 'base' },
+    { id: 'fault-create', label: 'Arıza Bildir', icon: 'warning-outline', color: '#EF4444', screen: 'FaultCreate', module: 'staff' },
+  ],
+  /* Resepsiyon müdürü: backend'de ön büro (FRONT_OFFICE_ROLES) — resepsiyonla aynı menü */
+  [ROLES.RECEPTION_MANAGER]: [
+    { id: 'my-tasks', label: 'Görevlerim', icon: 'clipboard-outline', color: '#1565C0', screen: 'MyTasks', module: 'staff' },
+    { id: 'room-service', label: 'Oda Servisi', icon: 'cafe-outline', color: '#8B5CF6', screen: 'RoomService', module: 'restaurant' },
+    { id: 'room-status', label: 'Oda Durumu', icon: 'bed-outline', color: '#06B6D4', screen: 'RoomStatus', module: 'base' },
+    { id: 'companies', label: 'Firma Yönetimi', icon: 'business-outline', color: '#1565C0', screen: 'Companies', module: 'base' },
+    { id: 'debtors', label: 'Borçlular', icon: 'cash-outline', color: '#DC2626', screen: 'Debtors', module: 'base' },
+    { id: 'reservations', label: 'Rezervasyonlar', icon: 'time-outline', color: '#7C3AED', screen: 'ReservationHistory', module: 'base' },
+    { id: 'guests', label: 'Müşteri Listesi', icon: 'people-circle-outline', color: '#0EA5E9', screen: 'GuestList', module: 'base' },
+    { id: 'agencies', label: 'Acenteler', icon: 'globe-outline', color: '#14B8A6', screen: 'Agencies', module: 'base' },
+    { id: 'invoices', label: 'Faturalar', icon: 'receipt-outline', color: '#F59E0B', screen: 'Invoices', module: 'invoices' },
+    { id: 'meal', label: 'Yemek Programı', icon: 'restaurant-outline', color: '#F59E0B', screen: 'MealProgram', module: 'restaurant' },
+    { id: 'shift-handover', label: 'Mesai Devri', icon: 'swap-horizontal-outline', color: '#0D9488', screen: 'ShiftHandover', module: 'staff' },
+    { id: 'night-audit', label: 'Gün Sonu', icon: 'moon-outline', color: '#1E293B', screen: 'NightAudit', module: 'base' },
+    { id: 'fault-create', label: 'Arıza Bildir', icon: 'warning-outline', color: '#EF4444', screen: 'FaultCreate', module: 'staff' },
+  ],
+  /* Muhasebe rolleri: cari, gelir-gider, fatura ve raporlar (backend ACCOUNTING_ROLES / REPORT_ROLES) */
+  [ROLES.ACCOUNTING_MANAGER]: [
+    { id: 'accounting', label: 'Muhasebe', icon: 'calculator-outline', color: '#0F766E', screen: 'Accounting', module: 'accounting' },
+    { id: 'debtors', label: 'Borçlular', icon: 'cash-outline', color: '#DC2626', screen: 'Debtors', module: 'base' },
+    { id: 'companies', label: 'Firma Yönetimi', icon: 'business-outline', color: '#1565C0', screen: 'Companies', module: 'base' },
+    { id: 'agencies', label: 'Acenteler', icon: 'globe-outline', color: '#14B8A6', screen: 'Agencies', module: 'base' },
+    { id: 'invoices', label: 'Faturalar', icon: 'receipt-outline', color: '#F59E0B', screen: 'Invoices', module: 'invoices' },
+    { id: 'reports', label: 'Raporlar', icon: 'bar-chart-outline', color: '#F97316', screen: 'Reports', module: 'base' },
+    { id: 'my-tasks', label: 'Görevlerim', icon: 'clipboard-outline', color: '#1565C0', screen: 'MyTasks', module: 'staff' },
+    { id: 'commissions', label: 'Komisyonlar', icon: 'trending-up-outline', color: '#9333EA', screen: 'Commission', module: 'restaurant' },
+    { id: 'fault-create', label: 'Arıza Bildir', icon: 'warning-outline', color: '#EF4444', screen: 'FaultCreate', module: 'staff' },
+  ],
+  [ROLES.ACCOUNTANT]: [
+    { id: 'accounting', label: 'Muhasebe', icon: 'calculator-outline', color: '#0F766E', screen: 'Accounting', module: 'accounting' },
+    { id: 'debtors', label: 'Borçlular', icon: 'cash-outline', color: '#DC2626', screen: 'Debtors', module: 'base' },
+    { id: 'companies', label: 'Firma Yönetimi', icon: 'business-outline', color: '#1565C0', screen: 'Companies', module: 'base' },
+    { id: 'agencies', label: 'Acenteler', icon: 'globe-outline', color: '#14B8A6', screen: 'Agencies', module: 'base' },
+    { id: 'invoices', label: 'Faturalar', icon: 'receipt-outline', color: '#F59E0B', screen: 'Invoices', module: 'invoices' },
+    { id: 'reports', label: 'Raporlar', icon: 'bar-chart-outline', color: '#F97316', screen: 'Reports', module: 'base' },
+    { id: 'my-tasks', label: 'Görevlerim', icon: 'clipboard-outline', color: '#1565C0', screen: 'MyTasks', module: 'staff' },
+    { id: 'commissions', label: 'Komisyonlar', icon: 'trending-up-outline', color: '#9333EA', screen: 'Commission', module: 'restaurant' },
     { id: 'fault-create', label: 'Arıza Bildir', icon: 'warning-outline', color: '#EF4444', screen: 'FaultCreate', module: 'staff' },
   ],
   [ROLES.MANAGER]: [
@@ -147,6 +207,7 @@ const TASK_MODULES: Record<string, TaskModule[]> = {
     { id: 'hotel-mgmt', label: 'Otel Yönetimi', icon: 'business-outline', color: '#7C3AED', screen: 'HotelManagement', module: 'base' },
     { id: 'room-settings', label: 'Oda Yönetimi', icon: 'bed-outline', color: '#0891B2', screen: 'RoomSettings', module: 'base' },
     { id: 'tables', label: 'Masalar', icon: 'grid-outline', color: '#06B6D4', screen: 'Tables', module: 'restaurant' },
+    { id: 'kasa', label: 'Kasa', icon: 'wallet-outline', color: '#16A34A', screen: 'CashRegister', module: 'restaurant' },
     { id: 'kitchen', label: 'Mutfak Ekranı', icon: 'flame-outline', color: '#EF4444', screen: 'Kitchen', module: 'restaurant' },
     { id: 'create-task', label: 'Görev Ata', icon: 'add-circle-outline', color: '#E91E63', screen: 'CreateTask', module: 'staff' },
     { id: 'complaints', label: 'Şikayetler & Öneriler', icon: 'chatbubbles-outline', color: '#8B5CF6', screen: 'Complaints', module: 'base' },
@@ -155,7 +216,10 @@ const TASK_MODULES: Record<string, TaskModule[]> = {
     { id: 'room-status', label: 'Oda Durumu', icon: 'bed-outline', color: '#06B6D4', screen: 'RoomStatus', module: 'base' },
     { id: 'companies', label: 'Firma Yönetimi', icon: 'business-outline', color: '#1565C0', screen: 'Companies', module: 'base' },
     { id: 'debtors', label: 'Borçlular', icon: 'cash-outline', color: '#DC2626', screen: 'Debtors', module: 'base' },
-    { id: 'reservations', label: 'Rezervasyon Geçmişi', icon: 'time-outline', color: '#7C3AED', screen: 'ReservationHistory', module: 'base' },
+    { id: 'reservations', label: 'Rezervasyonlar', icon: 'time-outline', color: '#7C3AED', screen: 'ReservationHistory', module: 'base' },
+    { id: 'guests', label: 'Müşteri Listesi', icon: 'people-circle-outline', color: '#0EA5E9', screen: 'GuestList', module: 'base' },
+    { id: 'agencies', label: 'Acenteler', icon: 'globe-outline', color: '#14B8A6', screen: 'Agencies', module: 'base' },
+    { id: 'invoices', label: 'Faturalar', icon: 'receipt-outline', color: '#F59E0B', screen: 'Invoices', module: 'invoices' },
     { id: 'shopping', label: 'Alışveriş Listesi', icon: 'cart-outline', color: '#22C55E', screen: 'ShoppingList', module: 'restaurant' },
     { id: 'meal', label: 'Yemek Programı', icon: 'restaurant-outline', color: '#F59E0B', screen: 'MealProgram', module: 'restaurant' },
     { id: 'stock', label: 'Stok Yönetimi', icon: 'cube-outline', color: '#EC4899', screen: 'Stock', module: 'minibar' },
@@ -163,7 +227,11 @@ const TASK_MODULES: Record<string, TaskModule[]> = {
     { id: 'staff', label: 'Personel Yönetimi', icon: 'people-outline', color: '#1565C0', screen: 'Staff', module: 'staff' },
     { id: 'cameras', label: 'Kameralar', icon: 'videocam-outline', color: '#607D8B', screen: 'Cameras', module: 'cameras' },
     { id: 'reports', label: 'Raporlar', icon: 'bar-chart-outline', color: '#F97316', screen: 'Reports', module: 'base' },
+    { id: 'accounting', label: 'Muhasebe', icon: 'calculator-outline', color: '#0F766E', screen: 'Accounting', module: 'accounting' },
+    { id: 'shift-handover', label: 'Mesai Devri', icon: 'swap-horizontal-outline', color: '#0D9488', screen: 'ShiftHandover', module: 'staff' },
     { id: 'night-audit', label: 'Gün Sonu', icon: 'moon-outline', color: '#1E293B', screen: 'NightAudit', module: 'base' },
+    { id: 'menu-mgmt', label: 'Menü Yönetimi', icon: 'book-outline', color: '#B45309', screen: 'MenuManagement', module: 'restaurant' },
+    { id: 'commissions', label: 'Komisyonlar', icon: 'trending-up-outline', color: '#9333EA', screen: 'Commission', module: 'restaurant' },
     { id: 'fault-create', label: 'Arıza Bildir', icon: 'warning-outline', color: '#EF4444', screen: 'FaultCreate', module: 'staff' },
   ],
   [ROLES.PATRON]: [
@@ -171,6 +239,7 @@ const TASK_MODULES: Record<string, TaskModule[]> = {
     { id: 'hotel-mgmt', label: 'Otel Yönetimi', icon: 'business-outline', color: '#7C3AED', screen: 'HotelManagement', module: 'base' },
     { id: 'room-settings', label: 'Oda Yönetimi', icon: 'bed-outline', color: '#0891B2', screen: 'RoomSettings', module: 'base' },
     { id: 'tables', label: 'Masalar', icon: 'grid-outline', color: '#06B6D4', screen: 'Tables', module: 'restaurant' },
+    { id: 'kasa', label: 'Kasa', icon: 'wallet-outline', color: '#16A34A', screen: 'CashRegister', module: 'restaurant' },
     { id: 'kitchen', label: 'Mutfak Ekranı', icon: 'flame-outline', color: '#EF4444', screen: 'Kitchen', module: 'restaurant' },
     { id: 'create-task', label: 'Görev Ata', icon: 'add-circle-outline', color: '#E91E63', screen: 'CreateTask', module: 'staff' },
     { id: 'complaints', label: 'Şikayetler & Öneriler', icon: 'chatbubbles-outline', color: '#8B5CF6', screen: 'Complaints', module: 'base' },
@@ -179,7 +248,10 @@ const TASK_MODULES: Record<string, TaskModule[]> = {
     { id: 'room-status', label: 'Oda Durumu', icon: 'bed-outline', color: '#06B6D4', screen: 'RoomStatus', module: 'base' },
     { id: 'companies', label: 'Firma Yönetimi', icon: 'business-outline', color: '#1565C0', screen: 'Companies', module: 'base' },
     { id: 'debtors', label: 'Borçlular', icon: 'cash-outline', color: '#DC2626', screen: 'Debtors', module: 'base' },
-    { id: 'reservations', label: 'Rezervasyon Geçmişi', icon: 'time-outline', color: '#7C3AED', screen: 'ReservationHistory', module: 'base' },
+    { id: 'reservations', label: 'Rezervasyonlar', icon: 'time-outline', color: '#7C3AED', screen: 'ReservationHistory', module: 'base' },
+    { id: 'guests', label: 'Müşteri Listesi', icon: 'people-circle-outline', color: '#0EA5E9', screen: 'GuestList', module: 'base' },
+    { id: 'agencies', label: 'Acenteler', icon: 'globe-outline', color: '#14B8A6', screen: 'Agencies', module: 'base' },
+    { id: 'invoices', label: 'Faturalar', icon: 'receipt-outline', color: '#F59E0B', screen: 'Invoices', module: 'invoices' },
     { id: 'shopping', label: 'Alışveriş Listesi', icon: 'cart-outline', color: '#22C55E', screen: 'ShoppingList', module: 'restaurant' },
     { id: 'meal', label: 'Yemek Programı', icon: 'restaurant-outline', color: '#F59E0B', screen: 'MealProgram', module: 'restaurant' },
     { id: 'stock', label: 'Stok Yönetimi', icon: 'cube-outline', color: '#EC4899', screen: 'Stock', module: 'minibar' },
@@ -187,7 +259,11 @@ const TASK_MODULES: Record<string, TaskModule[]> = {
     { id: 'staff', label: 'Personel Yönetimi', icon: 'people-outline', color: '#1565C0', screen: 'Staff', module: 'staff' },
     { id: 'cameras', label: 'Kameralar', icon: 'videocam-outline', color: '#607D8B', screen: 'Cameras', module: 'cameras' },
     { id: 'reports', label: 'Raporlar', icon: 'bar-chart-outline', color: '#F97316', screen: 'Reports', module: 'base' },
+    { id: 'accounting', label: 'Muhasebe', icon: 'calculator-outline', color: '#0F766E', screen: 'Accounting', module: 'accounting' },
+    { id: 'shift-handover', label: 'Mesai Devri', icon: 'swap-horizontal-outline', color: '#0D9488', screen: 'ShiftHandover', module: 'staff' },
     { id: 'night-audit', label: 'Gün Sonu', icon: 'moon-outline', color: '#1E293B', screen: 'NightAudit', module: 'base' },
+    { id: 'menu-mgmt', label: 'Menü Yönetimi', icon: 'book-outline', color: '#B45309', screen: 'MenuManagement', module: 'restaurant' },
+    { id: 'commissions', label: 'Komisyonlar', icon: 'trending-up-outline', color: '#9333EA', screen: 'Commission', module: 'restaurant' },
     { id: 'fault-create', label: 'Arıza Bildir', icon: 'warning-outline', color: '#EF4444', screen: 'FaultCreate', module: 'staff' },
   ],
 };
@@ -212,6 +288,14 @@ const MODULE_CATEGORY: Record<string, string> = {
   'companies': 'reservation',
   'debtors': 'reservation',
   'reservations': 'reservation',
+  'guests': 'reservation',
+  'agencies': 'reservation',
+  'invoices': 'reservation',
+  'accounting': 'reservation',
+  'kasa': 'daily',
+  'shift-handover': 'daily',
+  'menu-mgmt': 'kitchen-stock',
+  'commissions': 'management',
   'night-audit': 'reservation',
   // Mutfak & Stok
   'meal': 'kitchen-stock',
@@ -263,6 +347,14 @@ const SCREEN_MAP: Record<string, React.ComponentType<{ onClose: () => void }>> =
   HotelManagement: HotelManagementScreen,
   RoomSettings: RoomSettingsScreen,
   NightAudit: NightAuditScreen,
+  GuestList: GuestListScreen,
+  Agencies: AgencyScreen,
+  Invoices: InvoiceListScreen,
+  Accounting: AccountingScreen,
+  CashRegister: CashRegisterScreen,
+  ShiftHandover: ShiftHandoverScreen,
+  MenuManagement: MenuManagementScreen,
+  Commission: CommissionScreen,
 };
 
 const TasksScreen: React.FC = () => {

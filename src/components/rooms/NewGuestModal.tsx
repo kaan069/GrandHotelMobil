@@ -7,7 +7,7 @@
  * - Yeni müşteri → boş form, normal kayıt
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -33,9 +33,11 @@ interface NewGuestModalProps {
   visible: boolean;
   onClose: () => void;
   onSave: (guest: Guest) => void;
+  /** Ön kayıtlı (yer tutucu) rezervasyondan gelen isim/telefon — form açılırken doldurulur */
+  initialValues?: { firstName?: string; lastName?: string; phone?: string };
 }
 
-const NewGuestModal: React.FC<NewGuestModalProps> = ({ visible, onClose, onSave }) => {
+const NewGuestModal: React.FC<NewGuestModalProps> = ({ visible, onClose, onSave, initialValues }) => {
   const [tcNo, setTcNo] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -56,6 +58,14 @@ const NewGuestModal: React.FC<NewGuestModalProps> = ({ visible, onClose, onSave 
     setPhone(''); setEmail('');
     setErrors({}); setTcStatus('idle'); setFoundGuestId(null);
   };
+
+  useEffect(() => {
+    if (!visible || !initialValues) return;
+    setFirstName((v) => v || initialValues.firstName || '');
+    setLastName((v) => v || initialValues.lastName || '');
+    setPhone((v) => v || initialValues.phone || '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible]);
 
   /* TC kontrolünü hem onBlur hem MRZ scan sonrası çağırabilmek için tcOverride parametresi */
   const handleTcBlur = useCallback(async (tcOverride?: string) => {

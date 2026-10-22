@@ -41,15 +41,21 @@ export interface ApiRoom {
   reservationStaffName: string | null;
   reservationStatus: string | null;
   reservationOwnerName: string | null;
+  reservationCompanyId?: number | null;
+  reservationAgencyId?: number | null;
+  reservationAgencyName?: string | null;
+  reservationAgencyCode?: string | null;
   notes: string | null;
 }
 
 /** Oda içindeki aktif misafir bilgisi (RoomSerializer.get_guests) */
 export interface ApiRoomGuest {
-  guestId: number;
+  /** Yer tutucu (sadece isimli) rezervasyonda null */
+  guestId: number | null;
   guestName: string;
   phone: string;
-  checkIn: string;
+  /** Rezerve durumda henüz giriş yok → null */
+  checkIn: string | null;
   checkOut: string | null;
   isActive: boolean;
 }
@@ -70,6 +76,9 @@ export interface Reservation {
   roomNumber: string;
   companyId: number | null;
   companyName: string | null;
+  agencyId?: number | null;
+  agencyName?: string | null;
+  agencyReservationCode?: string | null;
   checkIn: string;
   checkOut: string | null;
   guestNames: string | null;
@@ -80,6 +89,9 @@ export interface Reservation {
   paidAmount: string;
   isActive: boolean;
   createdByStaff: string | null;
+  /** Hızlı (ön kayıt) rezervasyonda kalıcı misafir yok; geçici isim/telefon burada */
+  placeholderGuestName?: string;
+  placeholderGuestPhone?: string;
 }
 
 /** Backend GET /api/reservations/{id}/ response (detay — stays + folios dahil) */

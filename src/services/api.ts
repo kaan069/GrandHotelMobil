@@ -33,7 +33,6 @@ import type {
   ApiMenuCategory,
   ApiMenuItem,
 } from '../utils/types';
-import type { Fault } from '../components/tasks/FaultDetailView';
 import type { components } from './generated/schema';
 
 /**
@@ -41,6 +40,9 @@ import type { components } from './generated/schema';
  * Elle düzenlenmez — backend değişince: npm run gen:api
  */
 type Schemas = components['schemas'];
+
+/** Arıza kaydı — backend FaultSerializer'dan üretilir (web ile aynı tip) */
+export type Fault = Schemas['Fault'];
 
 /* ==================== BASE CLIENT ==================== */
 
@@ -234,7 +236,10 @@ export const roomsApi = {
     apiClient<ApiRoom>(`/rooms/${id}/`),
 
   /** Check-in: Yeni rezervasyon + misafir girişi */
-  checkIn: (roomId: number, body: { guestId: number; notes?: string; companyId?: number; checkOut?: string }) =>
+  checkIn: (roomId: number, body: {
+    guestId: number; notes?: string; companyId?: number; checkOut?: string;
+    agencyId?: number; agencyReservationCode?: string;
+  }) =>
     apiClient<ApiRoom>(`/rooms/${roomId}/check_in/`, {
       method: 'POST',
       body: JSON.stringify(body),
@@ -295,6 +300,70 @@ export const roomsApi = {
   /** Oda sil */
   delete: (id: number) =>
     apiClient(`/rooms/${id}/`, { method: 'DELETE' }),
+
+  /** Yanlış eklenen misafiri odadan çıkar (son misafir çıkarılamaz — backend 400) */
+  removeGuest: (roomId: number, guestId: number) =>
+    apiClient<ApiRoom>(`/rooms/${roomId}/remove_guest/`, {
+      method: 'POST',
+      body: JSON.stringify({ guestId }),
+    }),
+
+  /** Son 24 saatteki check-out'u geri al — oda tekrar dolu olur */
+  revertCheckout: (roomId: number) =>
+    apiClient<ApiRoom>(`/rooms/${roomId}/revert_checkout/`, { method: 'POST' }),
+
+  /** Oda taşıma — rezervasyon, misafirler ve folio hedef odaya geçer */
+  moveGuests: (fromRoomId: number, toRoomId: number) =>
+    apiClient<ApiRoom>(`/rooms/${fromRoomId}/move/`, {
+      method: 'POST',
+      body: JSON.stringify({ toRoomId }),
+    }),
+};
+
+/* ==================== AUDIT (İŞLEM GEÇMİŞİ) API ==================== */
+
+/** Oda işlem kaydı — kayıtları backend yazar (check-out, taşıma, silinen folio...) */
+export type ApiAuditLog = Schemas['AuditLog'];
+
+export const auditApi = {
+  getByRoom: (roomId: number) =>
+    apiClient<ApiAuditLog[]>(`/rooms/${roomId}/audit-logs/`),
+};
+
+/* ==================== KBS API ==================== */
+
+export interface ApiKbsResult {
+  guestName: string;
+  tcNo: string;
+  status: 'checked_in' | 'failed';
+  kbsReference: string;
+  message: string;
+}
+
+export interface ApiKbsRecord {
+  id: number;
+  roomId: number;
+  roomNumber: string;
+  guestName: string;
+  tcNo: string;
+  status: string;
+  kbsReference: string;
+  sentAt: string | null;
+  checkoutAt: string | null;
+}
+
+export const kbsApi = {
+  /** Odadaki misafirleri KBS'ye bildir (zaten bildirilenler tekrar gönderilmez) */
+  send: (roomId: number) =>
+    apiClient<{ roomNumber: string; results: ApiKbsResult[] }>(`/kbs/send/${roomId}/`, { method: 'POST' }),
+
+  getRecords: (filters?: { status?: string; roomId?: number }) => {
+    const params = new URLSearchParams();
+    if (filters?.status) params.append('status', filters.status);
+    if (filters?.roomId) params.append('roomId', String(filters.roomId));
+    const qs = params.toString();
+    return apiClient<ApiKbsRecord[]>(`/kbs/records/${qs ? '?' + qs : ''}`);
+  },
 };
 
 /* ==================== HOTEL API ==================== */
@@ -359,6 +428,65 @@ export const guestsApi = {
   /** TC ile müşteri kontrolü */
   checkTc: (tc: string) =>
     apiClient<{ found: boolean; isBlocked?: boolean; guest?: Guest }>(`/guests/check_tc/?tc=${encodeURIComponent(tc)}`),
+};
+
+/* ==================== AGENCIES API ==================== */
+
+/** Acente — backend AgencySerializer (web ile aynı tip) */
+export type Agency = Schemas['Agency'];
+export type AgencyInput = Schemas['AgencyRequest'];
+
+export interface AgencyDebtor {
+  id: number;
+  name: string;
+  taxNumber: string | null;
+  phone: string | null;
+  email: string | null;
+  commissionRate: string;
+  totalAmount: string;
+  paidAmount: string;
+  balance: string;
+  reservationCount: number;
+  activeReservations: number;
+}
+
+export interface AgencyDebtDetail {
+  agency: {
+    id: number; name: string; taxNumber: string | null; phone: string | null; email: string | null;
+    address: string | null; contactPerson: string | null; commissionRate: string;
+  };
+  summary: { totalAmount: string; paidAmount: string; balance: string; commission: string; reservationCount: number };
+  reservations: {
+    id: number; roomNumber: string; guestNames: string;
+    checkIn: string | null; checkOut: string | null;
+    totalAmount: string; paidAmount: string; balance: string;
+    isActive: boolean; status: string; agencyReservationCode: string;
+  }[];
+}
+
+/** /agencies/{id}/reservations/ satırı (iptal edilenler hariç) */
+export interface AgencyReservation {
+  id: number; roomNumber: string; guestNames: string;
+  checkIn: string | null; checkOut: string | null;
+  totalAmount: string; paidAmount: string; status: string; isActive: boolean;
+  agencyReservationCode: string;
+}
+
+export const agenciesApi = {
+  getAll: () => apiClient<Agency[]>('/agencies/'),
+  getReservations: (id: number) => apiClient<AgencyReservation[]>(`/agencies/${id}/reservations/`),
+  create: (data: AgencyInput) =>
+    apiClient<Agency>('/agencies/', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: number, data: Partial<AgencyInput>) =>
+    apiClient<Agency>(`/agencies/${id}/`, { method: 'PATCH', body: JSON.stringify(data) }),
+  delete: (id: number) => apiClient(`/agencies/${id}/`, { method: 'DELETE' }),
+  getDebtors: () => apiClient<AgencyDebtor[]>('/agencies/debtors/'),
+  getDebtDetail: (id: number) => apiClient<AgencyDebtDetail>(`/agencies/${id}/debt_detail/`),
+  addPayment: (agencyId: number, data: { reservationId: number; amount: number; description?: string; staffName?: string }) =>
+    apiClient<{ success: boolean; balance: string }>(`/agencies/${agencyId}/add_payment/`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
 };
 
 /* ==================== COMPANIES API ==================== */
@@ -500,21 +628,28 @@ export const reservationsApi = {
   getById: (id: number) =>
     apiClient<ReservationDetail>(`/reservations/${id}/`),
 
-  /** Yeni rezervasyon oluştur (check-in yapmadan) */
+  /**
+   * Yeni rezervasyon oluştur (check-in yapmadan).
+   * Ya `guestId` ya da `placeholderGuestName` zorunlu — ön kayıtta kalıcı misafir oluşmaz,
+   * misafir geldiğinde oda ekranından kimlik bilgileriyle eklenir.
+   */
   create: (data: {
-    roomId: number; guestId: number;
+    roomId: number; guestId?: number;
+    placeholderGuestName?: string; placeholderGuestPhone?: string;
     checkIn: string; checkOut?: string;
     notes?: string; staffName?: string; companyId?: number;
+    agencyId?: number; agencyReservationCode?: string;
   }) =>
     apiClient<Reservation>('/reservations/', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
 
-  /** Rezervasyon güncelle (sadece reserved/confirmed durumunda) */
+  /** Rezervasyon güncelle — reserved / checked_in (giriş yapılmışsa oda ve giriş tarihi değişmez) */
   update: (id: number, data: {
     roomId?: number; checkIn?: string; checkOut?: string;
-    notes?: string; companyId?: number | null; totalAmount?: number;
+    notes?: string; companyId?: number | null;
+    agencyId?: number | null; agencyReservationCode?: string;
   }) =>
     apiClient<Reservation>(`/reservations/${id}/`, {
       method: 'PUT',
@@ -526,11 +661,15 @@ export const reservationsApi = {
     apiClient<Reservation>(`/reservations/${id}/cancel/`, { method: 'POST' }),
 
   /** Rezerve → Check-in dönüşümü */
-  checkIn: (id: number, body?: { companyId?: number | null }) =>
+  checkIn: (id: number, body?: { companyId?: number | null; agencyId?: number | null; agencyReservationCode?: string }) =>
     apiClient<Reservation>(`/reservations/${id}/check_in/`, {
       method: 'POST',
       body: body ? JSON.stringify(body) : undefined,
     }),
+
+  /** Check-in iptal — rezervasyon 'Rezerve'ye döner, oda müsait olur */
+  revertCheckin: (id: number) =>
+    apiClient<Reservation>(`/reservations/${id}/revert_checkin/`, { method: 'POST' }),
 };
 
 /* ==================== FOLIOS API ==================== */
@@ -566,23 +705,50 @@ export const foliosApi = {
 
 /* ==================== REPORTS API ==================== */
 
+/** Rapor rezervasyon satırı (iptaller hariç) — tutarlar metin döner */
+export interface StayReportReservation {
+  id: number;
+  roomNumber: string;
+  checkIn: string | null;
+  checkOut: string | null;
+  notes: string;
+  totalAmount: string;
+  paidAmount: string;
+  status: string;
+  isActive: boolean;
+  stays: { guestId: number; guestName: string; phone: string; checkIn: string | null; checkOut: string | null; isActive: boolean }[];
+}
+
+export interface CompanyReport {
+  company: { id: number; name: string; taxNumber: string | null; address: string | null; phone: string | null; email: string | null };
+  summary: { totalReservations: number; activeReservations: number; totalGuests: number; totalAmount: string; paidAmount: string; balance: string };
+  reservations: StayReportReservation[];
+}
+
+export interface RoomReport {
+  room: { id: number; roomNumber: string; bedType: string; floor: number; capacity: number; view: string; price: string; status: string };
+  summary: { totalReservations: number; activeReservation: boolean; totalRevenue: string };
+  reservations: StayReportReservation[];
+}
+
+const reportQuery = (filters?: { dateFrom?: string; dateTo?: string }) => {
+  const params = new URLSearchParams();
+  if (filters?.dateFrom) params.append('dateFrom', filters.dateFrom);
+  if (filters?.dateTo) params.append('dateTo', filters.dateTo);
+  const qs = params.toString();
+  return qs ? '?' + qs : '';
+};
+
+/** Web karşılığı: reportsApi (pages/reports/RoomReport.tsx, CompanyReport.tsx). Toplamlar sadece gerçekleşmiş konaklamalardan. */
 export const reportsApi = {
-  /** Firma raporu */
-  company: (id: number, filters?: { dateFrom?: string; dateTo?: string }) => {
-    const params = new URLSearchParams();
-    if (filters?.dateFrom) params.append('dateFrom', filters.dateFrom);
-    if (filters?.dateTo) params.append('dateTo', filters.dateTo);
-    const qs = params.toString();
-    return apiClient<any>(`/reports/company/${id}/${qs ? '?' + qs : ''}`);
-  },
+  company: (id: number, filters?: { dateFrom?: string; dateTo?: string }) =>
+    apiClient<CompanyReport>(`/reports/company/${id}/${reportQuery(filters)}`),
 
-  /** Misafir raporu */
-  guest: (id: number) =>
-    apiClient<any>(`/reports/guest/${id}/`),
+  guest: (id: number, filters?: { dateFrom?: string; dateTo?: string }) =>
+    apiClient<unknown>(`/reports/guest/${id}/${reportQuery(filters)}`),
 
-  /** Oda raporu */
-  room: (id: number) =>
-    apiClient<any>(`/reports/room/${id}/`),
+  room: (id: number, filters?: { dateFrom?: string; dateTo?: string }) =>
+    apiClient<RoomReport>(`/reports/room/${id}/${reportQuery(filters)}`),
 };
 
 /* ==================== KAZANÇ (GELİR) API ==================== */
@@ -604,6 +770,23 @@ export interface NightAuditSchedule {
     roomsCharged: number;
     totalCharged: number;
   } | null;
+}
+
+/** Kaydedilmiş gün sonu raporu — web NightAuditReportItem ile aynı */
+export interface NightAuditReportItem {
+  id: number;
+  date: string;
+  roomsCharged: number;
+  totalCharged: number;
+  noShowCount: number;
+  noShowCancelled: number;
+  processedBy: string;
+  processedAt: string | null;
+  /** Otomatik gün sonu (zamanlanmış) tarafından mı çalıştırıldı */
+  automatic: boolean;
+  details: { roomNumber: string; guestName: string; amount: number; nights?: number; companyName: string | null; note?: string }[];
+  noShowDetails: { roomNumber: string; guestName: string; reservationId: number; cancelled: boolean }[];
+  occupancySnapshot: { occupied?: number; available?: number; total?: number; rate?: number };
 }
 
 export const kazancApi = {
@@ -641,6 +824,15 @@ export const kazancApi = {
    */
   getNightAuditSchedule: () =>
     apiClient<NightAuditSchedule>('/kazanc/night-audit-schedule/'),
+
+  /** Kaydedilmiş gün sonu raporları (en yeni üstte, en fazla 100) */
+  nightAuditReports: (filters?: { dateFrom?: string; dateTo?: string }) => {
+    const params = new URLSearchParams();
+    if (filters?.dateFrom) params.append('dateFrom', filters.dateFrom);
+    if (filters?.dateTo) params.append('dateTo', filters.dateTo);
+    const qs = params.toString();
+    return apiClient<NightAuditReportItem[]>(`/kazanc/night-audit-reports/${qs ? '?' + qs : ''}`);
+  },
 
   /**
    * No-show iptal — web ile aynı endpoint.
@@ -723,6 +915,13 @@ export const staffApi = {
   getById: (id: number) =>
     apiClient<ApiEmployee>(`/staff/${id}/`),
 
+  /** Yeni 4 haneli giriş şifresi üretir (patron / genel müdür; patron hesabını sadece patron) */
+  resetPassword: (id: number) =>
+    apiClient<{ success: boolean; staffNumber: string; fullName: string; newPassword: string }>(
+      `/staff/${id}/reset_password/`,
+      { method: 'POST' },
+    ),
+
   create: (data: {
     firstName: string; lastName: string; phone: string; password: string;
     staffNumber: string; hireDate: string; roles: string[]; salary?: number;
@@ -775,21 +974,8 @@ export const tasksApi = {
 
 /* ==================== LEAVES (İZİN) API ==================== */
 
-export interface ApiLeave {
-  id: number;
-  employeeId: number;
-  employeeName: string;
-  leaveType: string;
-  startDate: string;
-  endDate: string;
-  durationDays: number;
-  status: string;
-  deductFromAnnual: boolean;
-  note: string;
-  approvedById: number | null;
-  approvedByName: string | null;
-  createdAt: string;
-}
+/** İzin kaydı — backend LeaveSerializer'dan üretilir (web ile aynı tip) */
+export type ApiLeave = Schemas['Leave'];
 
 export const leavesApi = {
   getAll: (filters?: { employeeId?: number; status?: string }) => {
@@ -803,15 +989,29 @@ export const leavesApi = {
   getForEmployee: (employeeId: number) =>
     apiClient<ApiLeave[]>(`/staff/${employeeId}/leaves/`),
 
+  /** Yöneticinin izin vermesi (doğrudan onaylı; onaylayan backend'de token'dan) */
   create: (data: {
     employeeId: number; leaveType: string;
     startDate: string; endDate: string;
-    deductFromAnnual?: boolean; note?: string; approvedById?: number;
+    deductFromAnnual?: boolean; note?: string;
   }) =>
     apiClient<ApiLeave>('/leaves/', { method: 'POST', body: JSON.stringify(data) }),
 
+  /** Onaylı izni (yönetici) ya da bekleyen talebi (sahibi/yönetici) iptal eder */
   cancel: (id: number) =>
     apiClient<ApiLeave>(`/leaves/${id}/cancel/`, { method: 'POST' }),
+
+  /** Personelin kendi izin talebi — 'pending' oluşur, kişi token'dan (web: leavesApi.request) */
+  request: (data: { leaveType: string; startDate: string; endDate: string; note?: string; deductFromAnnual?: boolean }) =>
+    apiClient<ApiLeave>('/leaves/request/', { method: 'POST', body: JSON.stringify(data) }),
+
+  /** Bekleyen talebi onayla (patron/müdür) — bakiye ve çakışma yeniden kontrol edilir */
+  approve: (id: number) =>
+    apiClient<ApiLeave>(`/leaves/${id}/approve/`, { method: 'POST' }),
+
+  /** Bekleyen talebi reddet (patron/müdür) */
+  reject: (id: number) =>
+    apiClient<ApiLeave>(`/leaves/${id}/reject/`, { method: 'POST' }),
 };
 
 /* ==================== ATTENDANCE (MESAİ) API ==================== */
@@ -943,18 +1143,17 @@ export const faultsApi = {
     apiClient<Fault>(`/faults/${id}/`),
 
   /** Yeni arıza oluştur (multipart/form-data) */
+  /** Yeni arıza (multipart) — bildiren backend'de token'dan belirlenir */
   create: (data: {
     room_number: string;
     category: string;
     description: string;
-    reported_by?: string;
     photos?: string[];
   }) => {
     const formData = new FormData();
     formData.append('room_number', data.room_number);
     formData.append('category', data.category);
     formData.append('description', data.description);
-    if (data.reported_by) formData.append('reported_by', data.reported_by);
 
     if (data.photos) {
       data.photos.forEach((uri) => {
@@ -969,14 +1168,11 @@ export const faultsApi = {
     return apiMultipart<Fault>('/faults/', formData);
   },
 
-  /** Arıza durumunu güncelle */
-  updateStatus: (id: number, status: string, resolvedBy?: string) =>
+  /** Arıza durumunu güncelle (teknik ekip/yönetici) — çözen backend'de token'dan */
+  updateStatus: (id: number, status: string) =>
     apiClient<Fault>(`/faults/${id}/status/`, {
       method: 'PATCH',
-      body: JSON.stringify({
-        status,
-        ...(resolvedBy ? { resolved_by: resolvedBy } : {}),
-      }),
+      body: JSON.stringify({ status }),
     }),
 
   /** Çözüm fotoğrafı yükle */
@@ -1049,10 +1245,16 @@ export const cameraApi = {
 /** Hizmet alanları */
 export const serviceAreasApi = {
   getAll: () => apiClient<ApiServiceArea[]>('/service-areas/'),
+  /** Yeni hizmet alanı — backend otomatik kasa da açar (yönetici / restoran müdürü) */
+  create: (data: { name: string; areaType: string }) =>
+    apiClient<ApiServiceArea>('/service-areas/', { method: 'POST', body: JSON.stringify(data) }),
 };
 
 /** Masa yönetimi */
 export const tablesApi = {
+  /** Yeni masa (yönetici / restoran müdürü) */
+  create: (data: { tableNumber: string; serviceAreaId: number; capacity: number }) =>
+    apiClient<ApiTable>('/tables/', { method: 'POST', body: JSON.stringify(data) }),
   getAll: (filters?: { serviceAreaId?: number; status?: string }) => {
     const params = new URLSearchParams();
     if (filters?.serviceAreaId) params.append('serviceAreaId', String(filters.serviceAreaId));
@@ -1156,12 +1358,27 @@ export const qrApi = {
 };
 
 /** Menü yönetimi */
+/**
+ * Menü — okuma herkese açık; kategori / ürün tanımı (fiyat dahil) yönetici ve restoran müdürü,
+ * "tükendi / mevcut" işareti ayrıca mutfak ve bar (backend CanManageRestaurant / MENU_AVAILABILITY_ROLES).
+ * Ürün görseli web'den yüklenir (mobil düzenleme görseli değiştirmez).
+ */
 export const menuApi = {
   getCategories: () => apiClient<ApiMenuCategory[]>('/menu-categories/'),
   getItems: (categoryId?: number) => {
     const qs = categoryId ? `?categoryId=${categoryId}` : '';
     return apiClient<ApiMenuItem[]>(`/menu-items/${qs}`);
   },
+  createCategory: (data: { name: string; sortOrder?: number }) =>
+    apiClient<ApiMenuCategory>('/menu-categories/', { method: 'POST', body: JSON.stringify(data) }),
+  updateCategory: (id: number, data: { name?: string; sortOrder?: number; isActive?: boolean }) =>
+    apiClient<ApiMenuCategory>(`/menu-categories/${id}/`, { method: 'PATCH', body: JSON.stringify(data) }),
+  deleteCategory: (id: number) => apiClient(`/menu-categories/${id}/`, { method: 'DELETE' }),
+  createItem: (data: { categoryId: number; name: string; description?: string; price: string; isAvailable?: boolean }) =>
+    apiClient<ApiMenuItem>('/menu-items/', { method: 'POST', body: JSON.stringify(data) }),
+  updateItem: (id: number, data: { categoryId?: number; name?: string; description?: string; price?: string; isAvailable?: boolean }) =>
+    apiClient<ApiMenuItem>(`/menu-items/${id}/`, { method: 'PATCH', body: JSON.stringify(data) }),
+  deleteItem: (id: number) => apiClient(`/menu-items/${id}/`, { method: 'DELETE' }),
 };
 
 /* ==================== KOMİSYON API ==================== */
@@ -1180,7 +1397,18 @@ export interface MyCommissionsData {
   totalSales: string;
   count: number;
   items: CommissionItem[];
+  /** Liste son 100 kayıtla sınırlandıysa true (toplamlar yine tüm kayıtlardan) */
+  truncated?: boolean;
 }
+
+export interface CommissionSettings {
+  isActive: boolean;
+  minAmount: string;
+  commissionRate: string;
+}
+
+/** Komisyon raporu — web CommissionReport ile aynı tip */
+export type CommissionReport = Schemas['CommissionReport'];
 
 export const commissionApi = {
   getMy: (staffNumber: string, filters?: { dateFrom?: string; dateTo?: string }) => {
@@ -1189,6 +1417,203 @@ export const commissionApi = {
     if (filters?.dateTo) params.append('dateTo', filters.dateTo);
     return apiClient<MyCommissionsData>(`/commission/my/?${params.toString()}`);
   },
+
+  getSettings: () => apiClient<CommissionSettings>('/commission/settings/'),
+  /** Patron / genel müdür */
+  updateSettings: (data: Partial<{ isActive: boolean; minAmount: number; commissionRate: number }>) =>
+    apiClient<CommissionSettings>('/commission/settings/', { method: 'PUT', body: JSON.stringify(data) }),
+
+  /** Tüm personel komisyon raporu (patron, müdür, restoran müdürü, muhasebe) */
+  getReport: (filters?: { dateFrom?: string; dateTo?: string; employeeId?: number }) => {
+    const params = new URLSearchParams();
+    if (filters?.dateFrom) params.append('dateFrom', filters.dateFrom);
+    if (filters?.dateTo) params.append('dateTo', filters.dateTo);
+    if (filters?.employeeId) params.append('employeeId', String(filters.employeeId));
+    const qs = params.toString();
+    return apiClient<CommissionReport>(`/commission/list/${qs ? '?' + qs : ''}`);
+  },
+};
+
+/* ==================== MESAİ DEVRİ API ==================== */
+/* Web karşılığı: shiftApi. Devreden backend'de oturumdaki personeldir (yönetici başkası adına açabilir). */
+
+export type ApiShiftHandover = Omit<Schemas['ShiftHandover'], 'endTime'> & { endTime: string | null };
+
+export const shiftsApi = {
+  getAll: (params?: { status?: string; date?: string }) => {
+    const qs = new URLSearchParams();
+    if (params?.status) qs.append('status', params.status);
+    if (params?.date) qs.append('date', params.date);
+    const q = qs.toString();
+    return apiClient<ApiShiftHandover[]>(`/shifts/${q ? '?' + q : ''}`);
+  },
+  getActive: () => apiClient<ApiShiftHandover | null>('/shifts/active/'),
+  create: (data: { toEmployeeId: number; notes?: string }) =>
+    apiClient<{ shift: ApiShiftHandover; closedShift: ApiShiftHandover | null }>('/shifts/', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  close: (id: number, data: { cardSales?: number; cashSales?: number; notes?: string }) =>
+    apiClient<ApiShiftHandover>(`/shifts/${id}/close/`, { method: 'POST', body: JSON.stringify(data) }),
+};
+
+/* ==================== MUHASEBE API ==================== */
+/* Web karşılığı: grandhotel-web/src/api/services.ts → accountingApi (aynı tipler) */
+
+export interface ApiExpense {
+  id: number;
+  category: string;
+  categoryLabel: string;
+  amount: string;
+  date: string;
+  description: string;
+  vendor: string;
+  paymentMethod: string;
+  paymentMethodLabel: string;
+  isRecurring: boolean;
+  createdBy: string;
+  createdAt: string;
+}
+
+export interface ExpensePayload {
+  category: string;
+  amount: number | string;
+  date: string;
+  description?: string;
+  vendor?: string;
+  paymentMethod?: string;
+  isRecurring?: boolean;
+}
+
+export interface CategoryTotal { category: string; total: string }
+
+export interface IncomeExpenseSummary {
+  /** İndirimler düşülmeden önceki tahakkuk */
+  grossIncome: string;
+  discounts: string;
+  /** Net gelir = grossIncome − discounts (Dashboard / Ciro raporlarıyla aynı) */
+  income: string;
+  expense: string;
+  net: string;
+  incomeByCategory: CategoryTotal[];
+  expenseByCategory: CategoryTotal[];
+}
+
+export interface AccountingSummary {
+  openDebit: string;
+  openCredit: string;
+  netReceivable: string;
+  monthIncome: string;
+  monthExpense: string;
+  monthNet: string;
+}
+
+export interface GuestDebtor {
+  id: number; name: string; phone: string; tcNo: string;
+  debit: string; credit: string; balance: string;
+}
+
+export const accountingApi = {
+  listExpenses: (filters?: { category?: string; dateFrom?: string; dateTo?: string }) => {
+    const params = new URLSearchParams();
+    if (filters?.category) params.append('category', filters.category);
+    if (filters?.dateFrom) params.append('dateFrom', filters.dateFrom);
+    if (filters?.dateTo) params.append('dateTo', filters.dateTo);
+    const qs = params.toString();
+    return apiClient<ApiExpense[]>(`/accounting/expenses/${qs ? '?' + qs : ''}`);
+  },
+  createExpense: (payload: ExpensePayload) =>
+    apiClient<ApiExpense>('/accounting/expenses/', { method: 'POST', body: JSON.stringify(payload) }),
+  deleteExpense: (id: number) =>
+    apiClient(`/accounting/expenses/${id}/`, { method: 'DELETE' }),
+  summary: () => apiClient<AccountingSummary>('/accounting/summary/'),
+  incomeExpense: (filters?: { dateFrom?: string; dateTo?: string }) => {
+    const params = new URLSearchParams();
+    if (filters?.dateFrom) params.append('dateFrom', filters.dateFrom);
+    if (filters?.dateTo) params.append('dateTo', filters.dateTo);
+    const qs = params.toString();
+    return apiClient<IncomeExpenseSummary>(`/accounting/income-expense/${qs ? '?' + qs : ''}`);
+  },
+  guestDebtors: () =>
+    apiClient<{ items: GuestDebtor[]; count: number; totalBalance: string }>('/accounting/guest-debtors/'),
+};
+
+/* ==================== KASA API ==================== */
+/* Web karşılığı: kasaApi. Açan/kapatan/gider giren personel backend'de token'dan alınır. */
+
+export interface ApiCashRegister {
+  id: number;
+  name: string;
+  registerType: string;
+  serviceAreaId: number | null;
+  serviceAreaName: string | null;
+  status: string;
+  openedByName: string | null;
+  closedByName: string | null;
+  openingBalance: string;
+  closingBalance: string | null;
+  openedAt: string | null;
+  closedAt: string | null;
+  createdAt: string;
+  todayTotals: {
+    cash: string;
+    card: string;
+    roomCharge: string;
+    expense: string;
+    collected?: string;
+    pending?: string;
+    total: string;
+  };
+}
+
+export interface ApiCashTransaction {
+  id: number;
+  registerId: number;
+  tabId: number | null;
+  tabNo: string | null;
+  transactionType: string;
+  amount: string;
+  description: string;
+  processedByName: string | null;
+  createdAt: string;
+}
+
+export interface ApiCashSummary {
+  date: string;
+  registerName: string;
+  status: string;
+  openingBalance: string;
+  closingBalance: string | null;
+  cashSales: string;
+  cardSales: string;
+  roomChargeSales: string;
+  totalSales: string;
+  expenses: string;
+  expectedCash: string;
+  actualCash: string | null;
+  difference: string | null;
+  transactionCount: number;
+}
+
+export const kasaApi = {
+  getAll: () => apiClient<ApiCashRegister[]>('/cash-registers/'),
+  create: (data: { name: string; registerType: string; serviceAreaId?: number }) =>
+    apiClient<ApiCashRegister>('/cash-registers/', { method: 'POST', body: JSON.stringify(data) }),
+  open: (id: number, data: { openingBalance: number }) =>
+    apiClient<ApiCashRegister>(`/cash-registers/${id}/open/`, { method: 'POST', body: JSON.stringify(data) }),
+  close: (id: number, data: { closingBalance: number }) =>
+    apiClient<ApiCashRegister>(`/cash-registers/${id}/close/`, { method: 'POST', body: JSON.stringify(data) }),
+  getSummary: (id: number) => apiClient<ApiCashSummary>(`/cash-registers/${id}/summary/`),
+  getTransactions: (id: number, filters?: { dateFrom?: string; dateTo?: string; type?: string }) => {
+    const params = new URLSearchParams();
+    if (filters?.dateFrom) params.append('dateFrom', filters.dateFrom);
+    if (filters?.dateTo) params.append('dateTo', filters.dateTo);
+    if (filters?.type) params.append('type', filters.type);
+    const qs = params.toString();
+    return apiClient<ApiCashTransaction[]>(`/cash-registers/${id}/transactions/${qs ? '?' + qs : ''}`);
+  },
+  addExpense: (id: number, data: { amount: number; description: string }) =>
+    apiClient<ApiCashTransaction>(`/cash-registers/${id}/add-expense/`, { method: 'POST', body: JSON.stringify(data) }),
 };
 
 /* ==================== INVOICES API ==================== */
@@ -1277,4 +1702,18 @@ export const invoicesApi = {
 
   get: (id: number) =>
     apiClient<ApiInvoice>(`/invoices/${id}/`),
+
+  list: (filters?: { type?: string; status?: string; dateFrom?: string; dateTo?: string }) => {
+    const params = new URLSearchParams();
+    if (filters?.type) params.append('type', filters.type);
+    if (filters?.status) params.append('status', filters.status);
+    if (filters?.dateFrom) params.append('dateFrom', filters.dateFrom);
+    if (filters?.dateTo) params.append('dateTo', filters.dateTo);
+    const qs = params.toString();
+    return apiClient<ApiInvoice[]>(`/invoices/${qs ? '?' + qs : ''}`);
+  },
+
+  /** Sadece taslak / hatalı fatura iptal edilir — resmîleşmiş belge Paraşüt'ten iptal edilir */
+  cancel: (id: number) =>
+    apiClient<ApiInvoice>(`/invoices/${id}/cancel/`, { method: 'POST' }),
 };

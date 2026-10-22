@@ -8,10 +8,11 @@
  *   - Server-side search (debounce 300ms)
  *   - "Yeni Rezervasyon" butonu (modal)
  *   - Rezervasyon iptal aksiyonu (uzun bas → menu)
- *   - Kart: Rez. No, durum chip'i, ödeme chip'i, personel adı
+ *   - Kart: Rez. No, durum chip'i, ödeme chip'i, personel adı, acente, ön kayıt adı
  *
  * Filtreler değiştiğinde API parametreli olarak yeniden çağrılır.
- * Detay görünümü: misafirler (stays) + folio + adisyonlar.
+ * Detay görünümü: misafirler (stays) + folio + adisyonlar; Düzenle, Check-in,
+ * Check-in İptal, Rezervasyon İptal (web ReservationDetail ile aynı işlemler).
  */
 
 import React, { useState, useCallback, useEffect, useRef } from 'react';
@@ -42,8 +43,10 @@ import {
 } from '../../utils/constants';
 import { reservationsApi, tabsApi } from '../../services/api';
 import type { Reservation, ReservationDetail, ApiTab } from '../../utils/types';
+import { calcFolioTotals, isFolioDeductionRow } from '../../utils/folio';
 
-import NewReservationModal from './NewReservationModal';
+import NewReservationModal from '../../components/reservations/NewReservationModal';
+import ReservationEditModal from '../../components/reservations/ReservationEditModal';
 
 interface ReservationHistoryScreenProps {
   onClose: () => void;
@@ -114,6 +117,8 @@ const ReservationHistoryScreen: React.FC<ReservationHistoryScreenProps> = ({ onC
   const [selectedDetail, setSelectedDetail] = useState<ReservationDetail | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [selectedTabs, setSelectedTabs] = useState<ApiTab[]>([]);
+  const [showEdit, setShowEdit] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
 
   /* Search debounce (300ms) */
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -173,6 +178,31 @@ const ReservationHistoryScreen: React.FC<ReservationHistoryScreenProps> = ({ onC
     }
   };
 
+  /* Detaydaki işlemler (check-in / check-in iptal) — sonrasında detay ve liste yenilenir */
+  const runDetailAction = (title: string, message: string, confirmText: string, action: () => Promise<unknown>, destructive = false) => {
+    if (!selectedDetail) return;
+    const current = selectedDetail;
+    Alert.alert(title, message, [
+      { text: 'Vazgeç', style: 'cancel' },
+      {
+        text: confirmText,
+        style: destructive ? 'destructive' : 'default',
+        onPress: async () => {
+          setActionLoading(true);
+          try {
+            await action();
+            await handleSelectReservation(current);
+            fetchReservations();
+          } catch (err) {
+            Alert.alert('Hata', (err as Error).message || 'İşlem yapılamadı');
+          } finally {
+            setActionLoading(false);
+          }
+        },
+      },
+    ]);
+  };
+
   /* Rezervasyon iptal — hem ana listeden hem detaydan kullanılır */
   const handleCancel = (r: { id: number; roomNumber: string; status: string }, fromDetail = false) => {
     if (r.status !== RESERVATION_STATUS.RESERVED) {
@@ -206,13 +236,12 @@ const ReservationHistoryScreen: React.FC<ReservationHistoryScreenProps> = ({ onC
 
   /* ─── DETAY GÖRÜNÜMÜ ─── */
   if (selectedDetail) {
-    const parseAmount = (a: number | string) => typeof a === 'string' ? parseFloat(a) : a;
-    const folios = selectedDetail.folioItems || [];
-    const charges = folios.filter((f) => !['payment', 'discount'].includes(f.category)).reduce((s, f) => s + parseAmount(f.amount), 0);
-    const discounts = folios.filter((f) => f.category === 'discount').reduce((s, f) => s + parseAmount(f.amount), 0);
-    const payments = folios.filter((f) => f.category === 'payment').reduce((s, f) => s + parseAmount(f.amount), 0);
-    const balance = charges - discounts - payments;
+    /* Cari aktarım ve indirimler de düşülür — utils/folio.ts (backend ile aynı hesap) */
+    const { charges, discounts, payments, balance } = calcFolioTotals(selectedDetail.folioItems || []);
     const isPast = !selectedDetail.isActive;
+    const isReservedStatus = selectedDetail.status === RESERVATION_STATUS.RESERVED;
+    const isCheckedInStatus = selectedDetail.status === RESERVATION_STATUS.CHECKED_IN;
+    const activeStayCount = selectedDetail.stays.filter((st) => st.isActive).length;
 
     return (
       <View style={styles.container}>
@@ -244,11 +273,72 @@ const ReservationHistoryScreen: React.FC<ReservationHistoryScreenProps> = ({ onC
               </View>
             </View>
             {selectedDetail.companyName && <Text style={styles.companyText}>Firma: {selectedDetail.companyName}</Text>}
+            {selectedDetail.agencyName && (
+              <Text style={styles.companyText}>
+                Acente: {selectedDetail.agencyName}
+                {selectedDetail.agencyReservationCode ? ` · Kod: ${selectedDetail.agencyReservationCode}` : ''}
+              </Text>
+            )}
+            {!!selectedDetail.placeholderGuestName && (
+              <Text style={styles.companyText}>
+                Ön kayıt: {selectedDetail.placeholderGuestName}
+                {selectedDetail.placeholderGuestPhone ? ` · ${selectedDetail.placeholderGuestPhone}` : ''}
+              </Text>
+            )}
             {selectedDetail.notes ? <Text style={styles.notesText}>Not: {selectedDetail.notes}</Text> : null}
             {selectedDetail.createdByStaff && (
               <Text style={styles.companyText}>Personel: {selectedDetail.createdByStaff}</Text>
             )}
-            {selectedDetail.status === RESERVATION_STATUS.RESERVED && (
+            {(isReservedStatus || isCheckedInStatus) && (
+              <AppButton
+                title="Düzenle"
+                onPress={() => setShowEdit(true)}
+                icon="create-outline"
+                variant="outline"
+                disabled={actionLoading}
+                style={{ marginTop: spacing.md }}
+              />
+            )}
+            {isReservedStatus && (
+              <AppButton
+                title="Check-in Yap"
+                icon="log-in-outline"
+                loading={actionLoading}
+                style={{ marginTop: spacing.sm }}
+                onPress={() => {
+                  if (activeStayCount === 0) {
+                    Alert.alert(
+                      'Misafir Gerekli',
+                      'Bu ön kayıtlı rezervasyonda kalıcı misafir yok. Oda Durumu ekranından odayı açıp kimlik bilgileriyle misafir ekleyin, ardından check-in yapın.',
+                    );
+                    return;
+                  }
+                  runDetailAction(
+                    'Check-in',
+                    `Oda ${selectedDetail.roomNumber} rezervasyonu check-in yapılsın mı?`,
+                    'Check-in Yap',
+                    () => reservationsApi.checkIn(selectedDetail.id),
+                  );
+                }}
+              />
+            )}
+            {isCheckedInStatus && (
+              <AppButton
+                title="Check-in İptal"
+                icon="arrow-undo-outline"
+                variant="danger"
+                loading={actionLoading}
+                style={{ marginTop: spacing.sm }}
+                onPress={() => runDetailAction(
+                  'Check-in İptal',
+                  'Rezervasyon "Rezerve" durumuna döner, oda müsait olur. Misafir ve folio kayıtları korunur.',
+                  'Check-in İptal',
+                  () => reservationsApi.revertCheckin(selectedDetail.id),
+                  true,
+                )}
+              />
+            )}
+            {isReservedStatus && (
               <AppButton
                 title="Rezervasyon İptal"
                 onPress={() => handleCancel({
@@ -258,7 +348,8 @@ const ReservationHistoryScreen: React.FC<ReservationHistoryScreenProps> = ({ onC
                 }, true)}
                 icon="close-circle-outline"
                 variant="danger"
-                style={{ marginTop: spacing.md }}
+                disabled={actionLoading}
+                style={{ marginTop: spacing.sm }}
               />
             )}
           </AppCard>
@@ -296,9 +387,9 @@ const ReservationHistoryScreen: React.FC<ReservationHistoryScreenProps> = ({ onC
                     </View>
                     <Text style={[
                       styles.folioAmount,
-                      (folio.category === 'payment' || folio.category === 'discount') && { color: '#22C55E' },
+                      isFolioDeductionRow(folio.category) && { color: '#22C55E' },
                     ]}>
-                      {folio.category === 'payment' || folio.category === 'discount' ? '-' : ''}
+                      {isFolioDeductionRow(folio.category) ? '-' : ''}
                       {formatCurrency(folio.amount)}
                     </Text>
                   </View>
@@ -367,6 +458,16 @@ const ReservationHistoryScreen: React.FC<ReservationHistoryScreenProps> = ({ onC
             )}
           </AppCard>
         </ScrollView>
+
+        <ReservationEditModal
+          visible={showEdit}
+          reservation={selectedDetail}
+          onClose={() => setShowEdit(false)}
+          onSaved={() => {
+            handleSelectReservation(selectedDetail);
+            fetchReservations();
+          }}
+        />
       </View>
     );
   }
@@ -492,11 +593,15 @@ const ReservationHistoryScreen: React.FC<ReservationHistoryScreenProps> = ({ onC
                     />
                   </View>
                 </View>
-                {item.guestNames && (
+                {item.guestNames ? (
                   <Text style={styles.rezGuests} numberOfLines={1}>
                     <Ionicons name="people-outline" size={12} /> {item.guestNames}
                   </Text>
-                )}
+                ) : item.placeholderGuestName ? (
+                  <Text style={styles.rezGuests} numberOfLines={1}>
+                    <Ionicons name="person-outline" size={12} /> {item.placeholderGuestName} (ön kayıt)
+                  </Text>
+                ) : null}
                 <View style={styles.rezDates}>
                   <Text style={styles.rezDateText}>
                     <Ionicons name="log-in-outline" size={11} /> {formatDate(item.checkIn)}
@@ -508,6 +613,12 @@ const ReservationHistoryScreen: React.FC<ReservationHistoryScreenProps> = ({ onC
                 {item.companyName && (
                   <Text style={styles.rezCompany}>
                     <Ionicons name="business-outline" size={11} /> {item.companyName}
+                  </Text>
+                )}
+                {item.agencyName && (
+                  <Text style={styles.rezCompany}>
+                    <Ionicons name="globe-outline" size={11} /> {item.agencyName}
+                    {item.agencyReservationCode ? ` · ${item.agencyReservationCode}` : ''}
                   </Text>
                 )}
                 <View style={styles.rezFooter}>

@@ -7,6 +7,7 @@
  * 2. No-show iptal
  * 3. Gün sonu uygula → oda ücretleri folio'ya yazılır
  * 4. Sonuç özeti
+ * Üstteki "Geçmiş" ile kaydedilmiş gün sonu raporları (NightAuditHistoryView) görüntülenir.
  */
 
 import React, { useState, useEffect } from 'react';
@@ -26,6 +27,7 @@ import { colors, spacing, fontSize, borderRadius } from '../../theme';
 import { kazancApi } from '../../services/api';
 import type { NightAuditSchedule } from '../../services/api';
 import useAuth from '../../hooks/useAuth';
+import NightAuditHistoryView from '../../components/nightaudit/NightAuditHistoryView';
 
 interface Props {
   onClose: () => void;
@@ -50,6 +52,7 @@ type Step = 'preview' | 'result';
 const NightAuditScreen: React.FC<Props> = ({ onClose }) => {
   const { user } = useAuth();
   const [step, setStep] = useState<Step>('preview');
+  const [showHistory, setShowHistory] = useState(false);
   const [loading, setLoading] = useState(true);
   const [executing, setExecuting] = useState(false);
 
@@ -159,6 +162,16 @@ const NightAuditScreen: React.FC<Props> = ({ onClose }) => {
   const fmt = (n: number | undefined | null) => (n ?? 0).toLocaleString('tr-TR', { minimumFractionDigits: 0 });
   const today = new Date().toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' });
 
+  // Geçmiş raporlar
+  if (showHistory) {
+    return (
+      <View style={styles.container}>
+        <Header title="Gün Sonu Geçmişi" onClose={() => setShowHistory(false)} />
+        <NightAuditHistoryView />
+      </View>
+    );
+  }
+
   // Sonuç ekranı
   if (step === 'result' && result) {
     return (
@@ -187,7 +200,7 @@ const NightAuditScreen: React.FC<Props> = ({ onClose }) => {
 
   return (
     <View style={styles.container}>
-      <Header onClose={onClose} />
+      <Header onClose={onClose} onHistory={() => setShowHistory(true)} />
 
       {loading ? (
         <View style={styles.centered}><ActivityIndicator size="large" color={colors.primary} /></View>
@@ -300,13 +313,20 @@ const NightAuditScreen: React.FC<Props> = ({ onClose }) => {
   );
 };
 
-const Header: React.FC<{ onClose: () => void }> = ({ onClose }) => (
+const Header: React.FC<{ onClose: () => void; onHistory?: () => void; title?: string }> = ({ onClose, onHistory, title = 'Gün Sonu' }) => (
   <View style={styles.header}>
     <TouchableOpacity onPress={onClose} style={{ padding: spacing.xs }}>
       <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
     </TouchableOpacity>
-    <Text style={styles.headerTitle}>Gün Sonu</Text>
-    <View style={{ width: 24 }} />
+    <Text style={styles.headerTitle}>{title}</Text>
+    {onHistory ? (
+      <TouchableOpacity onPress={onHistory} style={styles.historyBtn}>
+        <Ionicons name="time-outline" size={18} color={colors.primary} />
+        <Text style={styles.historyBtnText}>Geçmiş</Text>
+      </TouchableOpacity>
+    ) : (
+      <View style={{ width: 24 }} />
+    )}
   </View>
 );
 
@@ -327,6 +347,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border,
   },
   headerTitle: { fontSize: fontSize.lg, fontWeight: '700', color: colors.textPrimary },
+  historyBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, padding: spacing.xs },
+  historyBtnText: { fontSize: fontSize.sm, fontWeight: '600', color: colors.primary },
   dateBand: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
     backgroundColor: '#1e293b', padding: spacing.md, borderRadius: borderRadius.md, marginBottom: spacing.md,

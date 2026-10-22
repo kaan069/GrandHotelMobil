@@ -1,8 +1,9 @@
 /**
- * LeaveGrantModal — Mobil İzin Verme Modalı
+ * LeaveGrantModal — Mobil İzin Verme / İzin Talebi Modalı
  *
- * Patron/müdür bir elemana izin vermek için kullanır.
- * Web'deki LeaveDialog'un mobil karşılığı.
+ * Patron/müdür bir elemana izin vermek için (StaffScreen) ve personel kendi
+ * izin talebini oluşturmak için (ProfileScreen, title/submitLabel ile) kullanır.
+ * Web'deki LeaveDialog / LeaveRequestDialog'un mobil karşılığı.
  *
  * Özellikler:
  *   - İzin tipi seçimi (haftalık, yıllık, günlük, ücretsiz)
@@ -35,6 +36,9 @@ const LEAVE_TYPES: { value: string; label: string; icon: string }[] = [
 ];
 
 interface LeaveGrantModalProps {
+  /** Varsayılan: "İzin Ver" (yönetici). Personel talebinde "İzin Talebi" */
+  title?: string;
+  submitLabel?: string;
   onClose: () => void;
   onSave: (data: {
     employeeId: number;
@@ -54,7 +58,9 @@ interface LeaveGrantModalProps {
   };
 }
 
-const LeaveGrantModal: React.FC<LeaveGrantModalProps> = ({ onClose, onSave, employee }) => {
+const LeaveGrantModal: React.FC<LeaveGrantModalProps> = ({
+  title = 'İzin Ver', submitLabel = 'İzin Ver', onClose, onSave, employee,
+}) => {
   const today = new Date().toISOString().split('T')[0];
   const [leaveType, setLeaveType] = useState('weekly');
   const [startDate, setStartDate] = useState(today);
@@ -109,7 +115,7 @@ const LeaveGrantModal: React.FC<LeaveGrantModalProps> = ({ onClose, onSave, empl
         <TouchableOpacity onPress={onClose}>
           <Ionicons name="close" size={28} color={colors.textPrimary} />
         </TouchableOpacity>
-        <Text style={styles.title}>İzin Ver</Text>
+        <Text style={styles.title}>{title}</Text>
         <View style={{ width: 28 }} />
       </View>
 
@@ -198,7 +204,7 @@ const LeaveGrantModal: React.FC<LeaveGrantModalProps> = ({ onClose, onSave, empl
 
         {/* Kaydet */}
         <AppButton
-          title="İzin Ver"
+          title={submitLabel}
           onPress={handleSubmit}
           icon="checkmark-circle-outline"
           style={styles.submitButton}

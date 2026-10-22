@@ -23,8 +23,9 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
-import { AppCard, AppButton, AppInput, EmptyState, LoadingState } from '../../components/common';
+import { AppCard, AppButton, AppInput, EmptyState, LoadingState, PromptModal, parseAmount } from '../../components/common';
 import { colors, spacing, fontSize, borderRadius } from '../../theme';
+import { deferAlert } from '../../utils/alert';
 import useApi from '../../hooks/useApi';
 import useAuth from '../../hooks/useAuth';
 import { companiesApi } from '../../services/api';
@@ -142,39 +143,23 @@ const CompanyScreen: React.FC<CompanyScreenProps> = ({ onClose }) => {
     ]);
   };
 
-  /* Ödeme ekle — borç kapat */
+  /* Ödeme ekle — borç kapat (PromptModal: Alert.prompt Android'de çalışmaz) */
+  const [paymentTarget, setPaymentTarget] = useState<{ rezId: number; roomNumber: string; balance: number } | null>(null);
   const handleAddPayment = (rezId: number, rezRoomNumber: string, rezBalance: number) => {
-    Alert.prompt(
-      'Ödeme Ekle',
-      `Oda ${rezRoomNumber} — Bakiye: ${formatCurrency(rezBalance)}\nÖdeme tutarını girin:`,
-      [
-        { text: 'İptal', style: 'cancel' },
-        {
-          text: 'Ödeme Yap',
-          onPress: async (value) => {
-            const amount = parseFloat(value || '0');
-            if (amount <= 0) { Alert.alert('Hata', 'Geçerli bir tutar girin'); return; }
-            try {
-              await companiesApi.addPayment(selectedCompany!.id, {
-                reservationId: rezId,
-                amount,
-                description: 'Firma ödemesi',
-                staffName: user?.name || '',
-              });
-              Alert.alert('Başarılı', `${formatCurrency(amount)} ödeme kaydedildi.`);
-              // Detayı yenile
-              const detail = await companiesApi.getDebtDetail(selectedCompany!.id);
-              setDebtDetail(detail);
-            } catch (err: any) {
-              Alert.alert('Hata', err.message || 'Ödeme yapılamadı');
-            }
-          },
-        },
-      ],
-      'plain-text',
-      '',
-      'decimal-pad'
-    );
+    setPaymentTarget({ rezId, roomNumber: rezRoomNumber, balance: rezBalance });
+  };
+  const submitPayment = async (value: string) => {
+    if (!paymentTarget || !selectedCompany) return;
+    const amount = parseAmount(value);
+    await companiesApi.addPayment(selectedCompany.id, {
+      reservationId: paymentTarget.rezId,
+      amount,
+      description: 'Firma ödemesi',
+      staffName: user?.name || '',
+    });
+    deferAlert('Başarılı', `${formatCurrency(amount)} ödeme kaydedildi.`);
+    const detail = await companiesApi.getDebtDetail(selectedCompany.id);
+    setDebtDetail(detail);
   };
 
   const formatDate = (d: string | null) => {
@@ -332,6 +317,24 @@ const CompanyScreen: React.FC<CompanyScreenProps> = ({ onClose }) => {
             )}
           </ScrollView>
         )}
+
+        <PromptModal
+          visible={!!paymentTarget}
+          title="Ödeme Ekle"
+          message={paymentTarget ? `Oda ${paymentTarget.roomNumber} — Bakiye: ${formatCurrency(paymentTarget.balance)}` : undefined}
+          placeholder="Ödeme tutarı"
+          initialValue={paymentTarget ? String(paymentTarget.balance) : ''}
+          keyboardType="decimal-pad"
+          confirmText="Ödeme Yap"
+          validate={(v) => {
+            const amount = parseAmount(v);
+            if (amount <= 0) return 'Geçerli bir tutar girin';
+            if (paymentTarget && amount > paymentTarget.balance + 0.001) return 'Tutar bakiyeden büyük olamaz';
+            return null;
+          }}
+          onConfirm={submitPayment}
+          onClose={() => setPaymentTarget(null)}
+        />
       </View>
     );
   }

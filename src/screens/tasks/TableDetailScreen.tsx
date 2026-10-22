@@ -4,6 +4,8 @@
  * Masaya tıklayınca açılır. Üstte adisyon kalemleri, altta menü.
  * + ile ürün ekle, -/sil ile çıkar. Tab yoksa ilk üründe otomatik oluşur.
  * Ödeme butonları sadece kasiyer/müdür/patron'da görünür.
+ * Masayı Taşı: açık adisyon boş bir masaya geçer. Masayı Kapat: açık adisyonu olmayan
+ * (ör. ödenmiş) masayı boşaltır. Web karşılığı: pages/tables/TableManagement.tsx
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -20,12 +22,13 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
-import { LoadingState } from '../../components/common';
+import { LoadingState, OptionPickerModal } from '../../components/common';
 import { colors, spacing, fontSize, borderRadius } from '../../theme';
 import { tablesApi, tabsApi, menuApi, reservationsApi } from '../../services/api';
 import type { ApiTable, ApiTab, ApiTabItem, ApiMenuCategory, ApiMenuItem } from '../../utils/types';
 import type { Reservation } from '../../utils/types';
 import useAuth from '../../hooks/useAuth';
+import { hasAnyRole } from '../../utils/permissions';
 
 interface Props {
   table: ApiTable;
@@ -35,7 +38,7 @@ interface Props {
 
 const TableDetailScreen: React.FC<Props> = ({ table, onClose, onUpdate }) => {
   const { user } = useAuth();
-  const canPay = ['cashier', 'patron', 'manager', 'restaurant_manager'].includes(user?.role || '');
+  const canPay = hasAnyRole(user, ['cashier', 'patron', 'manager', 'restaurant_manager']);
 
   const [tab, setTab] = useState<ApiTab | null>(null);
   const [loading, setLoading] = useState(true);
@@ -48,6 +51,68 @@ const TableDetailScreen: React.FC<Props> = ({ table, onClose, onUpdate }) => {
 
   /* Ödeme */
   const [paymentVisible, setPaymentVisible] = useState(false);
+
+  /* Masa taşı / kapat */
+  const [transferTargets, setTransferTargets] = useState<ApiTable[] | null>(null);
+  const [tableBusy, setTableBusy] = useState(false);
+
+  const openTransfer = async () => {
+    try {
+      const all = await tablesApi.getAll();
+      const empty = all.filter((t) => t.id !== table.id && t.status === 'empty' && t.isActive !== false);
+      if (empty.length === 0) {
+        Alert.alert('Boş Masa Yok', 'Adisyonu taşıyabileceğiniz boş masa bulunmuyor.');
+        return;
+      }
+      setTransferTargets(empty);
+    } catch (err) {
+      Alert.alert('Hata', (err as Error).message || 'Masalar yüklenemedi');
+    }
+  };
+
+  const handleTransfer = (targetId: number | null) => {
+    const target = transferTargets?.find((t) => t.id === targetId);
+    if (!target) return;
+    Alert.alert('Masayı Taşı', `Adisyon Masa ${table.tableNumber} → Masa ${target.tableNumber} (${target.serviceAreaName}) taşınsın mı?`, [
+      { text: 'Vazgeç', style: 'cancel' },
+      {
+        text: 'Taşı',
+        onPress: async () => {
+          setTableBusy(true);
+          try {
+            await tablesApi.transfer(table.id, target.id);
+            onUpdate();
+            onClose();
+          } catch (err) {
+            Alert.alert('Taşıma Yapılamadı', (err as Error).message || 'Beklenmeyen bir hata oluştu');
+          } finally {
+            setTableBusy(false);
+          }
+        },
+      },
+    ]);
+  };
+
+  const handleCloseTable = () => {
+    Alert.alert('Masayı Kapat', `Masa ${table.tableNumber} boşaltılsın mı?`, [
+      { text: 'Vazgeç', style: 'cancel' },
+      {
+        text: 'Kapat',
+        onPress: async () => {
+          setTableBusy(true);
+          try {
+            await tablesApi.close(table.id);
+            onUpdate();
+            onClose();
+          } catch (err) {
+            Alert.alert('Masa Kapatılamadı', (err as Error).message || 'Beklenmeyen bir hata oluştu');
+          } finally {
+            setTableBusy(false);
+          }
+        },
+      },
+    ]);
+  };
 
   /* Hesap böl */
   const [splitVisible, setSplitVisible] = useState(false);
@@ -217,6 +282,23 @@ const TableDetailScreen: React.FC<Props> = ({ table, onClose, onUpdate }) => {
               <Text style={styles.totalLabel}>TOPLAM</Text>
               <Text style={styles.totalValue}>{totalAmount.toFixed(2)} ₺</Text>
             </View>
+          </View>
+        )}
+
+        {/* Masa işlemleri */}
+        {(tab || table.status !== 'empty') && (
+          <View style={styles.tableActions}>
+            {tab ? (
+              <TouchableOpacity style={styles.tableActionBtn} onPress={openTransfer} disabled={tableBusy}>
+                <Ionicons name="swap-horizontal-outline" size={18} color={colors.primary} />
+                <Text style={styles.tableActionText}>Masayı Taşı</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity style={styles.tableActionBtn} onPress={handleCloseTable} disabled={tableBusy}>
+                <Ionicons name="checkmark-done-outline" size={18} color={colors.primary} />
+                <Text style={styles.tableActionText}>Masayı Kapat (Boşalt)</Text>
+              </TouchableOpacity>
+            )}
           </View>
         )}
 
@@ -419,6 +501,17 @@ const TableDetailScreen: React.FC<Props> = ({ table, onClose, onUpdate }) => {
           </View>
         </View>
       )}
+      <OptionPickerModal<number | null>
+        visible={!!transferTargets}
+        title="Hedef Masa"
+        options={(transferTargets || []).map((t) => ({
+          value: t.id,
+          label: `Masa ${t.tableNumber}`,
+          sublabel: `${t.serviceAreaName} · ${t.capacity} kişilik`,
+        }))}
+        onSelect={handleTransfer}
+        onClose={() => setTransferTargets(null)}
+      />
     </View>
   );
 };
@@ -437,6 +530,13 @@ const styles = StyleSheet.create({
   totalText: { color: '#fff', fontWeight: '700', fontSize: fontSize.md },
   content: { flex: 1, padding: spacing.md },
   section: { marginBottom: spacing.md },
+  tableActions: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md },
+  tableActionBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    paddingVertical: 10, borderRadius: borderRadius.md,
+    borderWidth: 1.5, borderColor: colors.primary, backgroundColor: colors.primary + '10',
+  },
+  tableActionText: { fontSize: fontSize.sm, fontWeight: '600', color: colors.primary },
   sectionTitle: { fontSize: fontSize.md, fontWeight: '700', color: colors.textPrimary, marginBottom: spacing.sm },
   /* Adisyon kalemleri */
   itemRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, paddingVertical: spacing.xs },

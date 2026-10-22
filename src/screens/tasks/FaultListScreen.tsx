@@ -23,12 +23,11 @@ import * as ImagePicker from 'expo-image-picker';
 
 import { AppCard, StatusChip, EmptyState } from '../../components/common';
 import FaultDetailView from '../../components/tasks/FaultDetailView';
-import type { Fault } from '../../components/tasks/FaultDetailView';
-import useAuth from '../../hooks/useAuth';
+import type { Fault } from '../../services/api';
 import useApi from '../../hooks/useApi';
 import { faultsApi } from '../../services/api';
 import { colors, spacing, fontSize, borderRadius } from '../../theme';
-import { FAULT_STATUS, FAULT_STATUS_LABELS, FAULT_STATUS_COLORS, FAULT_CATEGORIES, ROLE_LABELS } from '../../utils/constants';
+import { FAULT_STATUS, FAULT_STATUS_LABELS, FAULT_STATUS_COLORS, FAULT_CATEGORIES } from '../../utils/constants';
 
 interface FaultListScreenProps {
   onClose: () => void;
@@ -40,7 +39,6 @@ interface FilterOption {
 }
 
 const FaultListScreen: React.FC<FaultListScreenProps> = ({ onClose }) => {
-  const { user } = useAuth();
   const { data: faults, loading, error, refetch } = useApi<Fault[]>(() => faultsApi.getAll());
   const [filter, setFilter] = useState('all');
   const [selectedFault, setSelectedFault] = useState<Fault | null>(null);
@@ -60,10 +58,7 @@ const FaultListScreen: React.FC<FaultListScreenProps> = ({ onClose }) => {
   /** Arıza durumunu güncelle (API) */
   const updateStatus = async (id: number, newStatus: string) => {
     try {
-      const resolvedBy = newStatus === FAULT_STATUS.RESOLVED && user?.role
-        ? (ROLE_LABELS[user.role] || user.role)
-        : undefined;
-      await faultsApi.updateStatus(id, newStatus, resolvedBy);
+      await faultsApi.updateStatus(id, newStatus);
       await refetch();
       setSelectedFault(null);
     } catch (err: any) {
@@ -82,8 +77,7 @@ const FaultListScreen: React.FC<FaultListScreenProps> = ({ onClose }) => {
             const photoUri = result.assets[0].uri;
             try {
               await faultsApi.uploadResolutionPhotos(faultId, [photoUri]);
-              const resolvedBy = user?.role ? (ROLE_LABELS[user.role] || user.role) : undefined;
-              await faultsApi.updateStatus(faultId, FAULT_STATUS.RESOLVED, resolvedBy);
+              await faultsApi.updateStatus(faultId, FAULT_STATUS.RESOLVED);
               await refetch();
               setSelectedFault(null);
               Alert.alert('Başarılı', 'Arıza çözüldü olarak işaretlendi');
@@ -97,8 +91,7 @@ const FaultListScreen: React.FC<FaultListScreenProps> = ({ onClose }) => {
         text: 'Fotoğrafsız Kapat',
         onPress: async () => {
           try {
-            const resolvedBy = user?.role ? (ROLE_LABELS[user.role] || user.role) : undefined;
-            await faultsApi.updateStatus(faultId, FAULT_STATUS.RESOLVED, resolvedBy);
+            await faultsApi.updateStatus(faultId, FAULT_STATUS.RESOLVED);
             await refetch();
             setSelectedFault(null);
             Alert.alert('Başarılı', 'Arıza çözüldü olarak işaretlendi');
@@ -184,8 +177,8 @@ const FaultListScreen: React.FC<FaultListScreenProps> = ({ onClose }) => {
                 <Text style={styles.roomText}>Oda {item.roomNumber}</Text>
               </View>
               <StatusChip
-                label={FAULT_STATUS_LABELS[item.status]}
-                color={FAULT_STATUS_COLORS[item.status]}
+                label={FAULT_STATUS_LABELS[item.status ?? '']}
+                color={FAULT_STATUS_COLORS[item.status ?? '']}
               />
             </View>
 

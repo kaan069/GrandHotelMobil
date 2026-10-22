@@ -25,20 +25,9 @@ import {
   FAULT_CATEGORIES,
 } from '../../utils/constants';
 
-export interface Fault {
-  id: number;
-  roomNumber: string;
-  category: string;
-  description: string;
-  status: string;
-  reportedBy: string;
-  resolvedBy: string;
-  resolvedAt: string | null;
-  createdAt: string;
-  updatedAt: string;
-  photos: string[];
-  resolutionPhotos: string[];
-}
+/** Backend FaultSerializer'dan üretilen tip (services/api.ts) */
+export type { Fault } from '../../services/api';
+import type { Fault } from '../../services/api';
 
 interface FaultDetailViewProps {
   fault: Fault;
@@ -86,8 +75,8 @@ const FaultDetailView: React.FC<FaultDetailViewProps> = ({
             <Text style={styles.roomText}>Oda {fault.roomNumber}</Text>
           </View>
           <StatusChip
-            label={FAULT_STATUS_LABELS[fault.status]}
-            color={FAULT_STATUS_COLORS[fault.status]}
+            label={FAULT_STATUS_LABELS[fault.status ?? '']}
+            color={FAULT_STATUS_COLORS[fault.status ?? '']}
           />
         </View>
 

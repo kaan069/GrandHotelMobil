@@ -29,12 +29,12 @@ import {
   ROOM_STATUS,
   ROOM_STATUS_LABELS,
   ROOM_STATUS_COLORS,
-  ROLES,
 } from '../../utils/constants';
 import useAuth from '../../hooks/useAuth';
 import useApi from '../../hooks/useApi';
 import useRoomWebSocket from '../../hooks/useRoomWebSocket';
 import { roomsApi } from '../../services/api';
+import { isFrontOffice } from '../../utils/permissions';
 import type { ApiRoom } from '../../utils/types';
 
 interface RoomStatusScreenProps {
@@ -68,11 +68,15 @@ const mapApiRoomToSellRoom = (apiRoom: ApiRoom): RoomSellRoom => ({
   capacity: apiRoom.capacity,
   status: apiRoom.status,
   guestName: apiRoom.guestName || undefined,
-  guests: apiRoom.guests.map((g) => ({
-    guestId: g.guestId,
-    guestName: g.guestName,
-    phone: g.phone,
-  })),
+  /* Sadece odada kalan gerçek misafirler: çıkış yapmış (isActive=false) ve
+   * yer tutucu rezervasyonun hayali misafiri (guestId=null) listelenmez */
+  guests: apiRoom.guests
+    .filter((g): g is typeof g & { guestId: number } => g.guestId !== null && g.isActive !== false)
+    .map((g) => ({
+      guestId: g.guestId,
+      guestName: g.guestName,
+      phone: g.phone,
+    })),
   price: parseFloat(apiRoom.price) || 0,
   reservationId: apiRoom.reservationId || undefined,
   reservationNotes: apiRoom.reservationNotes || undefined,
@@ -80,6 +84,12 @@ const mapApiRoomToSellRoom = (apiRoom: ApiRoom): RoomSellRoom => ({
   reservationOwnerName: apiRoom.reservationOwnerName,
   reservationCheckIn: apiRoom.reservationCheckIn || undefined,
   reservationCheckOut: apiRoom.reservationCheckOut || undefined,
+  reservationCompanyId: apiRoom.reservationCompanyId ?? null,
+  reservationAgencyId: apiRoom.reservationAgencyId ?? null,
+  reservationAgencyCode: apiRoom.reservationAgencyCode || '',
+  /* Ön kayıtlı rezervasyonun geçici misafiri (guestId=null) — yeni misafir formuna ön doldurulur */
+  placeholderGuestName: apiRoom.guests.find((g) => g.guestId === null)?.guestName,
+  placeholderGuestPhone: apiRoom.guests.find((g) => g.guestId === null)?.phone || undefined,
 });
 
 interface FilterOption {
@@ -118,7 +128,10 @@ const RoomStatusScreen: React.FC<RoomStatusScreenProps> = ({ onClose }) => {
   /* Canlı oda state'i — API + WebSocket birleşimi */
   const [liveRooms, setLiveRooms] = useState<ApiRoom[]>([]);
   const [filter, setFilter] = useState('all');
-  const [selectedRoom, setSelectedRoom] = useState<ApiRoom | null>(null);
+  /* Seçili oda ID ile tutulur → API yenilemesi / WebSocket güncellemesi açık detaya da yansır */
+  const [selectedRoomId, setSelectedRoomId] = useState<number | null>(null);
+  const selectedRoom = selectedRoomId !== null ? liveRooms.find((r) => r.id === selectedRoomId) ?? null : null;
+  const setSelectedRoom = (room: ApiRoom | null) => setSelectedRoomId(room ? room.id : null);
   const [refreshing, setRefreshing] = useState(false);
 
   /* API verisi gelince liveRooms'a aktar */
@@ -135,8 +148,8 @@ const RoomStatusScreen: React.FC<RoomStatusScreenProps> = ({ onClose }) => {
     },
   });
 
-  /** Patron, müdür veya resepsiyon mu? */
-  const canManageRooms = user?.role === ROLES.PATRON || user?.role === ROLES.MANAGER || user?.role === ROLES.RECEPTION;
+  /** Ön büro (patron, müdür, resepsiyon, resepsiyon müdürü) — backend IsFrontOffice ile aynı */
+  const canManageRooms = isFrontOffice(user);
 
   /** Pull-to-refresh */
   const onRefresh = useCallback(async () => {
@@ -146,8 +159,8 @@ const RoomStatusScreen: React.FC<RoomStatusScreenProps> = ({ onClose }) => {
   }, [refetch]);
 
   /** Oda güncellendikten sonra (check-in/out) — listeyi yenile */
+  /** İşlem sonrası veriyi yenile — detay açık kalır (web'deki oda sekmesi gibi) */
   const handleRoomUpdate = () => {
-    setSelectedRoom(null);
     refetch();
   };
 

@@ -19,6 +19,7 @@ interface ReservationConfirmModalProps {
   roomNumber: string;
   guests: RoomGuest[];
   companyName?: string | null;
+  agencyName?: string | null;
   notes?: string;
   onClose: () => void;
   onConfirm: (checkIn: string, checkOut: string | null) => Promise<void>;
@@ -47,7 +48,7 @@ const formatDateTr = (dateStr: string): string => {
 };
 
 const ReservationConfirmModal: React.FC<ReservationConfirmModalProps> = ({
-  visible, roomNumber, guests, companyName, notes, onClose, onConfirm,
+  visible, roomNumber, guests, companyName, agencyName, notes, onClose, onConfirm,
 }) => {
   const [checkIn, setCheckIn] = useState<string>(todayStr());
   const [checkOut, setCheckOut] = useState<string>(addDays(todayStr(), 1));
@@ -110,6 +111,16 @@ const ReservationConfirmModal: React.FC<ReservationConfirmModalProps> = ({
                 <View style={styles.infoBox}>
                   <Ionicons name="business-outline" size={16} color={colors.textSecondary} />
                   <Text style={styles.infoText}>{companyName}</Text>
+                </View>
+              </>
+            ) : null}
+
+            {agencyName ? (
+              <>
+                <Text style={styles.label}>Acente</Text>
+                <View style={styles.infoBox}>
+                  <Ionicons name="globe-outline" size={16} color={colors.textSecondary} />
+                  <Text style={styles.infoText}>{agencyName}</Text>
                 </View>
               </>
             ) : null}

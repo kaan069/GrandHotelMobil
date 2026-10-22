@@ -21,7 +21,7 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { AppCard, StatusChip } from '../../components/common';
 import { colors, spacing, fontSize, borderRadius } from '../../theme';
-import { ROLE_LABELS } from '../../utils/constants';
+import { ROLE_LABELS, LEAVE_TYPE_LABELS, LEAVE_STATUS_LABELS, LEAVE_STATUS_COLORS } from '../../utils/constants';
 import { getYearsOfService } from '../../utils/leaveCalculator';
 import { staffApi, leavesApi, attendanceApi } from '../../services/api';
 import type { ApiEmployee, ApiLeave, ApiAttendanceLog } from '../../services/api';
@@ -44,6 +44,7 @@ const StaffScreen: React.FC<StaffScreenProps> = ({ onClose }) => {
   const [leaveModalEmployee, setLeaveModalEmployee] = useState<ApiEmployee | null>(null);
   const [employeeLeaves, setEmployeeLeaves] = useState<Record<number, ApiLeave[]>>({});
   const [employeeAttendance, setEmployeeAttendance] = useState<Record<number, ApiAttendanceLog[]>>({});
+  const [pendingLeaves, setPendingLeaves] = useState<ApiLeave[]>([]);
 
   /** Maaşı Türk locale'inde biçimle */
   const fmtSalary = (val: number | string | null | undefined) => {
@@ -69,9 +70,44 @@ const StaffScreen: React.FC<StaffScreenProps> = ({ onClose }) => {
     }
   }, []);
 
+  /** Onay bekleyen izin talepleri (web: PendingLeaveRequests) */
+  const fetchPendingLeaves = useCallback(async () => {
+    try {
+      setPendingLeaves(await leavesApi.getAll({ status: 'pending' }));
+    } catch {
+      setPendingLeaves([]);
+    }
+  }, []);
+
   useEffect(() => {
     fetchStaff();
-  }, [fetchStaff]);
+    fetchPendingLeaves();
+  }, [fetchStaff, fetchPendingLeaves]);
+
+  /** Bekleyen talebi onayla / reddet — backend onayda bakiye ve çakışmayı yeniden kontrol eder */
+  const handleDecideLeave = (leave: ApiLeave, approve: boolean) => {
+    Alert.alert(
+      approve ? 'İzni Onayla' : 'İzni Reddet',
+      `${leave.employeeName} — ${leave.startDate} → ${leave.endDate} (${leave.durationDays} gün)`,
+      [
+        { text: 'Vazgeç', style: 'cancel' },
+        {
+          text: approve ? 'Onayla' : 'Reddet',
+          style: approve ? 'default' : 'destructive',
+          onPress: async () => {
+            try {
+              await (approve ? leavesApi.approve(leave.id) : leavesApi.reject(leave.id));
+              fetchPendingLeaves();
+              fetchLeaves(leave.employeeId);
+              fetchStaff();
+            } catch (err: any) {
+              Alert.alert('Hata', err?.message || 'İşlem yapılamadı');
+            }
+          },
+        },
+      ],
+    );
+  };
 
   const handleRefresh = () => {
     setRefreshing(true);
@@ -94,8 +130,8 @@ const StaffScreen: React.FC<StaffScreenProps> = ({ onClose }) => {
       });
       setShowAddModal(false);
       fetchStaff();
-    } catch (err: any) {
-      Alert.alert('Hata', 'Eleman eklenemedi');
+    } catch (err) {
+      Alert.alert('Hata', (err as Error).message || 'Eleman eklenemedi');
     }
   };
 
@@ -113,8 +149,8 @@ const StaffScreen: React.FC<StaffScreenProps> = ({ onClose }) => {
       });
       setEditingEmployee(null);
       fetchStaff();
-    } catch (err: any) {
-      Alert.alert('Hata', 'Eleman güncellenemedi');
+    } catch (err) {
+      Alert.alert('Hata', (err as Error).message || 'Eleman güncellenemedi');
     }
   };
 
@@ -132,12 +168,38 @@ const StaffScreen: React.FC<StaffScreenProps> = ({ onClose }) => {
             try {
               await staffApi.delete(id);
               setStaff((prev) => prev.filter((s) => s.id !== id));
-            } catch {
-              Alert.alert('Hata', 'Eleman silinemedi');
+            } catch (err) {
+              Alert.alert('Hata', (err as Error).message || 'Eleman silinemedi');
             }
           },
         },
       ]
+    );
+  };
+
+  /** Şifre sıfırla — yeni şifre bir kez gösterilir, personele iletilmeli (web Eleman Yönetimi ile aynı) */
+  const handleResetPassword = (emp: ApiEmployee) => {
+    Alert.alert(
+      'Şifre Sıfırla',
+      `${emp.fullName} için yeni şifre üretilsin mi? Eski şifre geçersiz olacak.`,
+      [
+        { text: 'Vazgeç', style: 'cancel' },
+        {
+          text: 'Yeni Şifre Üret',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const res = await staffApi.resetPassword(emp.id);
+              Alert.alert(
+                'Yeni Şifre',
+                `${res.fullName}\nPersonel No: ${res.staffNumber}\nYeni şifre: ${res.newPassword}\n\nBu şifre bir daha gösterilmeyecek; personele iletin.`,
+              );
+            } catch (err) {
+              Alert.alert('Hata', (err as Error).message || 'Şifre sıfırlanamadı');
+            }
+          },
+        },
+      ],
     );
   };
 
@@ -204,10 +266,8 @@ const StaffScreen: React.FC<StaffScreenProps> = ({ onClose }) => {
     deductFromAnnual: boolean; note: string;
   }) => {
     try {
-      await leavesApi.create({
-        ...data,
-        approvedById: user?.id,
-      });
+      // Onaylayan backend'de token'dan atanır
+      await leavesApi.create(data);
       Alert.alert('Başarılı', 'İzin verildi');
       setLeaveModalEmployee(null);
       fetchStaff();
@@ -216,14 +276,6 @@ const StaffScreen: React.FC<StaffScreenProps> = ({ onClose }) => {
     } catch (err: any) {
       Alert.alert('Hata', err?.message || 'İzin verilemedi');
     }
-  };
-
-  const LEAVE_TYPE_LABELS: Record<string, string> = {
-    weekly: 'Haftalık', annual: 'Yıllık', daily: 'Günlük', unpaid: 'Ücretsiz',
-  };
-
-  const LEAVE_STATUS_LABELS: Record<string, string> = {
-    approved: 'Onaylı', pending: 'Beklemede', cancelled: 'İptal', rejected: 'Reddedildi',
   };
 
   const ATTENDANCE_STATUS_LABELS: Record<string, string> = {
@@ -303,6 +355,30 @@ const StaffScreen: React.FC<StaffScreenProps> = ({ onClose }) => {
         keyExtractor={(item) => String(item.id)}
         contentContainerStyle={styles.list}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
+        ListHeaderComponent={
+          pendingLeaves.length > 0 ? (
+            <AppCard style={styles.pendingCard}>
+              <Text style={styles.pendingTitle}>Bekleyen İzin Talepleri ({pendingLeaves.length})</Text>
+              {pendingLeaves.map((leave) => (
+                <View key={leave.id} style={styles.pendingRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.leaveHistoryType}>{leave.employeeName}</Text>
+                    <Text style={styles.leaveHistoryNote}>
+                      {LEAVE_TYPE_LABELS[leave.leaveType] || leave.leaveType} · {leave.startDate} → {leave.endDate} · {leave.durationDays} gün
+                    </Text>
+                    {leave.note ? <Text style={styles.leaveHistoryNote} numberOfLines={1}>{leave.note}</Text> : null}
+                  </View>
+                  <TouchableOpacity onPress={() => handleDecideLeave(leave, false)} style={styles.pendingBtn}>
+                    <Ionicons name="close" size={20} color={colors.error} />
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => handleDecideLeave(leave, true)} style={styles.pendingBtn}>
+                    <Ionicons name="checkmark" size={20} color={colors.success} />
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </AppCard>
+          ) : null
+        }
         renderItem={({ item }) => {
           const isExpanded = expandedId === item.id;
           const yearsOfService = getYearsOfService(item.hireDate);
@@ -468,8 +544,18 @@ const StaffScreen: React.FC<StaffScreenProps> = ({ onClose }) => {
                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                               <StatusChip
                                 label={LEAVE_STATUS_LABELS[leave.status] || leave.status}
-                                color={leave.status === 'approved' ? colors.success : leave.status === 'cancelled' ? colors.error : colors.warning}
+                                color={LEAVE_STATUS_COLORS[leave.status] || colors.warning}
                               />
+                              {leave.status === 'pending' && (
+                                <>
+                                  <TouchableOpacity onPress={() => handleDecideLeave(leave, true)}>
+                                    <Ionicons name="checkmark-circle" size={22} color={colors.success} />
+                                  </TouchableOpacity>
+                                  <TouchableOpacity onPress={() => handleDecideLeave(leave, false)}>
+                                    <Ionicons name="ban" size={20} color={colors.error} />
+                                  </TouchableOpacity>
+                                </>
+                              )}
                               {leave.status === 'approved' && (
                                 <TouchableOpacity onPress={() => handleCancelLeave(leave, item)}>
                                   <Ionicons name="close-circle" size={22} color={colors.error} />
@@ -497,6 +583,14 @@ const StaffScreen: React.FC<StaffScreenProps> = ({ onClose }) => {
                       >
                         <Ionicons name="create-outline" size={16} color="#fff" />
                         <Text style={styles.leaveBtnText}>Düzenle</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={[styles.editBtn, { backgroundColor: colors.warning }]}
+                        onPress={() => handleResetPassword(item)}
+                      >
+                        <Ionicons name="key-outline" size={16} color="#fff" />
+                        <Text style={styles.leaveBtnText}>Şifre</Text>
                       </TouchableOpacity>
 
                       <TouchableOpacity
@@ -587,12 +681,19 @@ const styles = StyleSheet.create({
   staffDetail: { marginTop: spacing.sm },
   divider: { height: 1, backgroundColor: colors.border, marginBottom: spacing.sm },
   detailTitle: { fontSize: fontSize.xs, fontWeight: '600', color: colors.textSecondary, marginTop: spacing.sm, marginBottom: 2 },
+  pendingCard: { marginBottom: spacing.md, borderLeftWidth: 4, borderLeftColor: colors.warning },
+  pendingTitle: { fontSize: fontSize.md, fontWeight: '700', color: colors.textPrimary, marginBottom: spacing.sm },
+  pendingRow: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
+    paddingVertical: spacing.sm, borderTopWidth: 1, borderTopColor: colors.border,
+  },
+  pendingBtn: { padding: 6, borderRadius: borderRadius.full, backgroundColor: colors.background },
   detailText: { fontSize: fontSize.sm, color: colors.textPrimary },
   leaveBar: { height: 6, backgroundColor: colors.border, borderRadius: 3, marginTop: 4, overflow: 'hidden' },
   leaveBarFill: { height: '100%', borderRadius: 3 },
   leaveText: { fontSize: fontSize.xs, color: colors.textSecondary, marginTop: 4 },
   actionRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: spacing.md,
+    flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 10, marginTop: spacing.md,
   },
   leaveBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 6,

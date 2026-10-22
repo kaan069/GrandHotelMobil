@@ -20,8 +20,9 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
-import { AppCard, EmptyState, LoadingState } from '../../components/common';
+import { AppCard, EmptyState, LoadingState, PromptModal, parseAmount } from '../../components/common';
 import { colors, spacing, fontSize, borderRadius } from '../../theme';
+import { deferAlert } from '../../utils/alert';
 import useAuth from '../../hooks/useAuth';
 import { accountTransactionsApi } from '../../services/api';
 import type { ApiAccountTransaction, AccountTransactionDebtorListResponse } from '../../services/api';
@@ -71,38 +72,19 @@ const DebtorsScreen: React.FC<DebtorsScreenProps> = ({ onClose }) => {
     setRefreshing(false);
   }, [load]);
 
-  const handleSettle = (tx: ApiAccountTransaction) => {
-    Alert.prompt(
-      tx.type === 'debit' ? 'Borç Ödemesi' : 'Alacak İşlemi',
-      `${TARGET_LABEL[tx.targetType || ''] || '-'}: ${tx.targetName}\nTutar: ${formatCurrency(parseFloat(tx.amount))}\n\nÖdeme tutarını girin:`,
-      [
-        { text: 'İptal', style: 'cancel' },
-        {
-          text: 'Kaydet',
-          onPress: async (value?: string) => {
-            const amount = parseFloat(value || '0');
-            if (amount <= 0) {
-              Alert.alert('Hata', 'Geçerli bir tutar girin');
-              return;
-            }
-            try {
-              await accountTransactionsApi.settle(tx.id, {
-                amount,
-                description: `Cari hesap ödemesi — ${tx.description || '#' + tx.id}`,
-                staffName: user?.name || '',
-              });
-              Alert.alert('Başarılı', `${formatCurrency(amount)} ödeme kaydedildi.`);
-              load();
-            } catch (err: any) {
-              Alert.alert('Hata', err.message || 'İşlem başarısız');
-            }
-          },
-        },
-      ],
-      'plain-text',
-      tx.amount,
-      'decimal-pad'
-    );
+  /* Cari hareketi kapat — tutar PromptModal ile (Alert.prompt Android'de çalışmaz) */
+  const [settleTarget, setSettleTarget] = useState<ApiAccountTransaction | null>(null);
+  const handleSettle = (tx: ApiAccountTransaction) => setSettleTarget(tx);
+  const submitSettle = async (value: string) => {
+    if (!settleTarget) return;
+    const amount = parseAmount(value);
+    await accountTransactionsApi.settle(settleTarget.id, {
+      amount,
+      description: `Cari hesap ödemesi — ${settleTarget.description || '#' + settleTarget.id}`,
+      staffName: user?.name || '',
+    });
+    deferAlert('Başarılı', `${formatCurrency(amount)} ödeme kaydedildi.`);
+    load();
   };
 
   const items = data?.items || [];
@@ -254,6 +236,26 @@ const DebtorsScreen: React.FC<DebtorsScreenProps> = ({ onClose }) => {
           }}
         />
       )}
+
+      <PromptModal
+        visible={!!settleTarget}
+        title={settleTarget?.type === 'credit' ? 'Alacak İşlemi' : 'Borç Ödemesi'}
+        message={settleTarget
+          ? `${TARGET_LABEL[settleTarget.targetType || ''] || '-'}: ${settleTarget.targetName}\nTutar: ${formatCurrency(parseFloat(settleTarget.amount))}`
+          : undefined}
+        placeholder="Ödeme tutarı"
+        initialValue={settleTarget?.amount || ''}
+        keyboardType="decimal-pad"
+        confirmText="Kaydet"
+        validate={(v) => {
+          const amount = parseAmount(v);
+          if (amount <= 0) return 'Geçerli bir tutar girin';
+          if (settleTarget && amount > parseFloat(settleTarget.amount) + 0.001) return 'Tutar kayıt tutarından büyük olamaz';
+          return null;
+        }}
+        onConfirm={submitSettle}
+        onClose={() => setSettleTarget(null)}
+      />
     </View>
   );
 };

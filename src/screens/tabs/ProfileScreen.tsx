@@ -21,13 +21,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { AppCard, AppButton } from '../../components/common';
 import useAuth from '../../hooks/useAuth';
 import { colors, spacing, fontSize, borderRadius } from '../../theme';
-import { ROLE_LABELS, APP_NAME } from '../../utils/constants';
+import { ROLE_LABELS, APP_NAME, LEAVE_TYPE_LABELS, LEAVE_STATUS_LABELS, LEAVE_STATUS_COLORS } from '../../utils/constants';
 import { calculateAnnualLeave, getYearsOfService } from '../../utils/leaveCalculator';
 import { staffApi, leavesApi } from '../../services/api';
 import type { ApiLeave } from '../../services/api';
 import { StatusChip } from '../../components/common';
 import ShiftsScreen from '../tasks/ShiftsScreen';
 import EarningsScreen from './EarningsScreen';
+import LeaveGrantModal from '../../components/employees/LeaveGrantModal';
 
 interface InfoRowProps {
   icon: keyof typeof Ionicons.glyphMap;
@@ -54,6 +55,52 @@ const ProfileScreen: React.FC = () => {
   const [leaveInfo, setLeaveInfo] = useState<{ used: number; remaining: number; entitlement: number } | null>(null);
   const [workInfo, setWorkInfo] = useState<{ consecutive: number; total: number; weeklyEarned: number; weeklyUsed: number; weeklyRemaining: number } | null>(null);
   const [myLeaves, setMyLeaves] = useState<ApiLeave[]>([]);
+  const [hasWeeklyThisWeek, setHasWeeklyThisWeek] = useState(false);
+  const [showLeaveRequest, setShowLeaveRequest] = useState(false);
+
+  const refreshMyLeaves = () => {
+    if (!user) return;
+    leavesApi.getForEmployee(user.id).then(setMyLeaves).catch(() => {});
+  };
+
+  /** İzin talebi — 'Onay Bekliyor' oluşur, yönetici onaylar (web: LeaveRequestDialog) */
+  const handleLeaveRequest = async (data: {
+    leaveType: string; startDate: string; endDate: string; deductFromAnnual: boolean; note: string;
+  }) => {
+    try {
+      await leavesApi.request({
+        leaveType: data.leaveType,
+        startDate: data.startDate,
+        endDate: data.endDate,
+        deductFromAnnual: data.deductFromAnnual,
+        note: data.note || undefined,
+      });
+      setShowLeaveRequest(false);
+      refreshMyLeaves();
+      Alert.alert('Talep Gönderildi', 'İzin talebiniz yöneticinize iletildi.');
+    } catch (err: any) {
+      Alert.alert('Hata', err?.message || 'İzin talebi oluşturulamadı');
+    }
+  };
+
+  /** Bekleyen talebi geri çek */
+  const handleWithdrawLeave = (leave: ApiLeave) => {
+    Alert.alert('Talebi Geri Çek', `${leave.startDate} tarihli izin talebiniz geri çekilsin mi?`, [
+      { text: 'Vazgeç', style: 'cancel' },
+      {
+        text: 'Geri Çek',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await leavesApi.cancel(leave.id);
+            refreshMyLeaves();
+          } catch (err: any) {
+            Alert.alert('Hata', err?.message || 'Talep geri çekilemedi');
+          }
+        },
+      },
+    ]);
+  };
 
   /* Backend'den izin + çalışma bilgisi çek */
   useEffect(() => {
@@ -61,6 +108,7 @@ const ProfileScreen: React.FC = () => {
     staffApi.getById(user.id)
       .then((emp: Record<string, unknown>) => {
         setIsOnLeave(emp.isOnLeaveToday as boolean);
+        setHasWeeklyThisWeek(Boolean(emp.hasWeeklyLeaveThisWeek));
         setLeaveInfo({
           used: emp.usedAnnualLeave as number,
           remaining: emp.remainingAnnualLeave as number,
@@ -76,9 +124,8 @@ const ProfileScreen: React.FC = () => {
       })
       .catch(() => {});
     // İzin geçmişini çek
-    leavesApi.getForEmployee(user.id)
-      .then(setMyLeaves)
-      .catch(() => {});
+    refreshMyLeaves();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   /** Çıkış onayı */
@@ -175,6 +222,13 @@ const ProfileScreen: React.FC = () => {
 
         {/* İzinlerim */}
         <LeaveCard hireDate={user.hireDate} leaveInfo={leaveInfo} />
+        <AppButton
+          title="İzin Talep Et"
+          variant="outline"
+          icon="calendar-outline"
+          onPress={() => setShowLeaveRequest(true)}
+          style={{ marginBottom: spacing.md }}
+        />
 
         {/* İzin Geçmişim */}
         {myLeaves.length > 0 && (
@@ -185,7 +239,7 @@ const ProfileScreen: React.FC = () => {
               <View key={leave.id} style={styles.leaveHistoryRow}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.leaveHistoryType}>
-                    {{ weekly: 'Haftalık', annual: 'Yıllık', daily: 'Günlük', unpaid: 'Ücretsiz' }[leave.leaveType] || leave.leaveType}
+                    {LEAVE_TYPE_LABELS[leave.leaveType] || leave.leaveType}
                     {' · '}
                     {leave.startDate === leave.endDate
                       ? leave.startDate
@@ -196,13 +250,14 @@ const ProfileScreen: React.FC = () => {
                   {leave.note ? <Text style={styles.leaveHistoryNote} numberOfLines={1}>{leave.note}</Text> : null}
                 </View>
                 <StatusChip
-                  label={
-                    { approved: 'Onaylı', pending: 'Beklemede', cancelled: 'İptal', rejected: 'Reddedildi' }[leave.status] || leave.status
-                  }
-                  color={
-                    leave.status === 'approved' ? '#22C55E' : leave.status === 'cancelled' ? '#EF4444' : '#F59E0B'
-                  }
+                  label={LEAVE_STATUS_LABELS[leave.status] || leave.status}
+                  color={LEAVE_STATUS_COLORS[leave.status] || '#F59E0B'}
                 />
+                {leave.status === 'pending' && (
+                  <TouchableOpacity onPress={() => handleWithdrawLeave(leave)} style={{ marginLeft: 6 }}>
+                    <Ionicons name="close-circle" size={22} color={colors.error} />
+                  </TouchableOpacity>
+                )}
               </View>
             ))}
           </AppCard>
@@ -273,6 +328,29 @@ const ProfileScreen: React.FC = () => {
         onRequestClose={() => setShowEarnings(false)}
       >
         <EarningsScreen onClose={() => setShowEarnings(false)} />
+      </Modal>
+
+      {/* İzin talebi — yöneticinin izin verme formunun aynısı (LeaveGrantModal) */}
+      <Modal
+        visible={showLeaveRequest}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowLeaveRequest(false)}
+      >
+        <LeaveGrantModal
+          title="İzin Talebi"
+          submitLabel="Talep Gönder"
+          onClose={() => setShowLeaveRequest(false)}
+          onSave={handleLeaveRequest}
+          employee={{
+            id: user.id,
+            fullName: user.name,
+            hasWeeklyLeaveThisWeek: hasWeeklyThisWeek,
+            remainingAnnualLeave: leaveInfo?.remaining,
+            annualLeaveEntitlement: leaveInfo?.entitlement,
+            weeklyLeaveRemaining: workInfo?.weeklyRemaining,
+          }}
+        />
       </Modal>
     </View>
   );

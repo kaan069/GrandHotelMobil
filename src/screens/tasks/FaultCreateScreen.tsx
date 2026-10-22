@@ -23,17 +23,15 @@ import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 
 import { AppButton, AppInput, AppCard } from '../../components/common';
-import useAuth from '../../hooks/useAuth';
 import { faultsApi } from '../../services/api';
 import { colors, spacing, fontSize, borderRadius } from '../../theme';
-import { FAULT_CATEGORIES, ROLE_LABELS } from '../../utils/constants';
+import { FAULT_CATEGORIES } from '../../utils/constants';
 
 interface FaultCreateScreenProps {
   onClose: () => void;
 }
 
 const FaultCreateScreen: React.FC<FaultCreateScreenProps> = ({ onClose }) => {
-  const { user } = useAuth();
 
   const [roomNumber, setRoomNumber] = useState('');
   const [category, setCategory] = useState('');
@@ -106,7 +104,6 @@ const FaultCreateScreen: React.FC<FaultCreateScreenProps> = ({ onClose }) => {
         room_number: roomNumber.trim(),
         category,
         description: description.trim(),
-        reported_by: user?.role ? (ROLE_LABELS[user.role] || user.role) : undefined,
         photos: photos.length > 0 ? photos : undefined,
       });
 

@@ -155,6 +155,131 @@ export const LEAVE_TYPES: readonly LabelValueOption[] = [
   { value: 'unpaid', label: 'Ücretsiz İzin' },
 ];
 
+/** İzin türü etiketleri (liste ekranları) — webdeki LEAVE_TYPE_LABELS ile aynı */
+export const LEAVE_TYPE_LABELS: Record<string, string> = {
+  weekly: 'Haftalık İzin',
+  annual: 'Yıllık İzin',
+  daily: 'Günlük İzin',
+  unpaid: 'Ücretsiz İzin',
+};
+
+/** Backend Leave.STATUS_CHOICES — talep 'pending' oluşur, yönetici onaylar/reddeder */
+export const LEAVE_STATUS_LABELS: Record<string, string> = {
+  pending: 'Onay Bekliyor',
+  approved: 'Onaylandı',
+  rejected: 'Reddedildi',
+  cancelled: 'İptal',
+};
+
+export const LEAVE_STATUS_COLORS: Record<string, string> = {
+  pending: '#F59E0B',
+  approved: '#22C55E',
+  rejected: '#EF4444',
+  cancelled: '#94A3B8',
+};
+
+/* ==================== FATURA ==================== */
+
+/** Backend Invoice.STATUS_CHOICES / TYPE_CHOICES / DOCUMENT_TYPE_CHOICES — web ile aynı */
+export const INVOICE_STATUS_LABELS: Record<string, string> = {
+  draft: 'Taslak',
+  pending: 'Bekliyor',
+  processing: 'İşleniyor',
+  completed: 'Tamamlandı',
+  failed: 'Hata',
+  cancelled: 'İptal',
+};
+
+export const INVOICE_STATUS_COLORS: Record<string, string> = {
+  draft: '#64748B',
+  pending: '#F59E0B',
+  processing: '#3B82F6',
+  completed: '#22C55E',
+  failed: '#EF4444',
+  cancelled: '#94A3B8',
+};
+
+export const INVOICE_TYPE_LABELS: Record<string, string> = {
+  sales: 'Satış Faturası',
+  purchase: 'Alış Faturası',
+  return: 'İade Faturası',
+  incoming: 'Gelen Fatura',
+  outgoing: 'Giden Fatura',
+};
+
+export const INVOICE_DOCUMENT_TYPE_LABELS: Record<string, string> = {
+  e_archive: 'e-Arşiv',
+  e_invoice: 'e-Fatura',
+};
+
+/* ==================== MUHASEBE / KASA ==================== */
+
+/** Backend Expense.CATEGORY_CHOICES (etiketler /meta/choices/ ile güncellenir) */
+export const EXPENSE_CATEGORIES: LabelValueOption[] = [
+  { value: 'rent', label: 'Kira' },
+  { value: 'utilities', label: 'Elektrik/Su/Doğalgaz' },
+  { value: 'salary', label: 'Personel/Maaş' },
+  { value: 'tax', label: 'Vergi/SGK' },
+  { value: 'maintenance', label: 'Bakım/Onarım' },
+  { value: 'supplies', label: 'Malzeme/İkmal' },
+  { value: 'food', label: 'Gıda/İçecek' },
+  { value: 'marketing', label: 'Pazarlama' },
+  { value: 'commission', label: 'Komisyon' },
+  { value: 'other', label: 'Diğer' },
+];
+
+export const EXPENSE_PAYMENT_METHODS: LabelValueOption[] = [
+  { value: 'cash', label: 'Nakit' },
+  { value: 'card', label: 'Kart' },
+  { value: 'transfer', label: 'Havale/EFT' },
+  { value: 'other', label: 'Diğer' },
+];
+
+/** Backend CashRegister.REGISTER_TYPE_CHOICES */
+export const CASH_REGISTER_TYPE_LABELS: Record<string, string> = {
+  restaurant: 'Restoran Kasa',
+  cafe: 'Kafe Kasa',
+  bar: 'Bar Kasa',
+  reception: 'Resepsiyon Kasa',
+};
+
+/** Backend CashRegisterTransaction.TRANSACTION_TYPE_CHOICES */
+export const CASH_TRANSACTION_LABELS: Record<string, string> = {
+  sale_cash: 'Nakit Satış',
+  sale_card: 'Kart Satış',
+  sale_room_charge: 'Odaya Yansıtma',
+  expense: 'Gider',
+  opening: 'Açılış',
+  closing: 'Kapanış',
+};
+
+/* ==================== ODA İŞLEM GEÇMİŞİ ==================== */
+
+/** Backend AuditLog.ACTION_CHOICES anahtarları (kayıtları backend yazar) — web AuditLogSection ile aynı */
+export const AUDIT_ACTION_LABELS: Record<string, string> = {
+  guest_removed: 'Misafir Çıkarıldı',
+  folio_deleted: 'Folio Silindi',
+  checkout_reversed: 'Check-out İptal',
+  checkin_reversed: 'Check-in İptal',
+  guest_checkout: 'Misafir Check-out',
+  checkout: 'Check-out',
+  force_checkout: 'Zorla Çıkış',
+  room_moved: 'Oda Taşındı',
+  guest_removed_from_company: 'Firmadan Çıkarıldı',
+};
+
+export const AUDIT_ACTION_COLORS: Record<string, string> = {
+  guest_removed: '#F59E0B',
+  folio_deleted: '#EF4444',
+  checkout_reversed: '#3B82F6',
+  checkin_reversed: '#3B82F6',
+  guest_checkout: '#64748B',
+  checkout: '#64748B',
+  force_checkout: '#EF4444',
+  room_moved: '#3B82F6',
+  guest_removed_from_company: '#F59E0B',
+};
+
 /* ==================== ODA DURUMLARI ==================== */
 
 export const ROOM_STATUS = {

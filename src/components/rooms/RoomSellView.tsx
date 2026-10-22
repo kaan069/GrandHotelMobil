@@ -7,12 +7,20 @@
  *
  * API entegrasyonu:
  *   - Check-in: roomsApi.checkIn → ilk misafir + reservation oluşur
+ *     (rezerve odada reservationsApi.checkIn — erken giriş dahil)
  *   - Ek misafir: roomsApi.addGuest → mevcut reservation'a eklenir
+ *   - Misafir menüsü: konaklama geçmişi, tek misafir check-out, odadan çıkar
+ *     (roomsApi.removeGuest — son misafir çıkarılamaz), kara liste (guestsApi.toggleBlock)
  *   - Check-out: roomsApi.checkOut → misafir(ler) çıkarılır
+ *   - Check-in iptal: reservationsApi.revertCheckin → rezervasyon 'Rezerve'ye döner
+ *   - Check-out iptal: roomsApi.revertCheckout (son 24 saat)
+ *   - Oda taşı: roomsApi.moveGuests (RoomMoveModal)
  *   - Folio: foliosApi.create / delete → reservation'a bağlı
+ *   - KBS (modül açıksa) ve İşlem Geçmişi (patron/müdür) kartları
+ * Web karşılığı: components/rooms/RoomDetailContent.tsx
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -23,8 +31,9 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
-import { AppCard, AppButton, AppInput, StatusChip } from '../common';
+import { AppCard, AppButton, AppInput, StatusChip, OptionPickerModal, PromptModal } from '../common';
 import { colors, spacing, fontSize, borderRadius } from '../../theme';
+import { deferAlert } from '../../utils/alert';
 import {
   ROOM_STATUS,
   ROOM_STATUS_LABELS,
@@ -33,14 +42,22 @@ import {
 } from '../../utils/constants';
 import useAuth from '../../hooks/useAuth';
 import useHotelSettings from '../../hooks/useHotelSettings';
-import { roomsApi, foliosApi, reservationsApi, companiesApi } from '../../services/api';
+import { roomsApi, foliosApi, reservationsApi, companiesApi, guestsApi, agenciesApi, Agency } from '../../services/api';
 import type { RoomGuest, ApiFolioItem, Guest, FolioCategory, Company } from '../../utils/types';
+import { isAdmin, isModuleEnabled } from '../../utils/permissions';
 import { calcFolioTotals, isFolioDeductionRow } from '../../utils/folio';
 
 import NewGuestModal from './NewGuestModal';
 import GuestSearchModal from './GuestSearchModal';
 import FolioAddModal from './FolioAddModal';
 import ReservationConfirmModal from './ReservationConfirmModal';
+import RoomMoveModal from './RoomMoveModal';
+import RoomKbsCard from './RoomKbsCard';
+import RoomAuditLogCard from './RoomAuditLogCard';
+import GuestStayHistoryModal from '../guests/GuestStayHistoryModal';
+import NewReservationModal from '../reservations/NewReservationModal';
+import InvoiceFormModal from '../tasks/InvoiceFormModal';
+import InvoicePdfModal from '../tasks/InvoicePdfModal';
 
 export interface RoomSellRoom {
   id: number;
@@ -58,6 +75,11 @@ export interface RoomSellRoom {
   reservationCheckOut?: string;
   reservationStatus?: string | null;
   reservationOwnerName?: string | null;
+  reservationCompanyId?: number | null;
+  reservationAgencyId?: number | null;
+  reservationAgencyCode?: string;
+  placeholderGuestName?: string;
+  placeholderGuestPhone?: string;
 }
 
 interface RoomSellViewProps {
@@ -89,14 +111,25 @@ const RoomSellView: React.FC<RoomSellViewProps> = ({ room, onClose, onRoomUpdate
   /* Walk-in akışı: boş odada Folio Ekle basılınca anlık reservation oluşur, ID burada tutulur */
   const [pendingReservationId, setPendingReservationId] = useState<number | null>(null);
 
-  /* Firma & Fiyat */
+  /* Firma / Acente & Fiyat — rezervasyon varsa kayıtlı değerlerle başlar (web ile aynı) */
   const [companies, setCompanies] = useState<Company[]>([]);
-  const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(null);
+  const [agencies, setAgencies] = useState<Agency[]>([]);
+  const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(room.reservationCompanyId ?? null);
+  const [selectedAgencyId, setSelectedAgencyId] = useState<number | null>(room.reservationAgencyId ?? null);
+  const [agencyCode, setAgencyCode] = useState(room.reservationAgencyCode || '');
+  const [picker, setPicker] = useState<'company' | 'agency' | null>(null);
   const [nightlyRate, setNightlyRate] = useState<string>(room.price ? String(room.price) : '');
 
   useEffect(() => {
     companiesApi.getAll().then(setCompanies).catch(() => {});
+    agenciesApi.getAll().then(setAgencies).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    setSelectedCompanyId(room.reservationCompanyId ?? null);
+    setSelectedAgencyId(room.reservationAgencyId ?? null);
+    setAgencyCode(room.reservationAgencyCode || '');
+  }, [room.id, room.reservationId, room.reservationCompanyId, room.reservationAgencyId, room.reservationAgencyCode]);
 
   const handleCompanyChange = (compId: number | null) => {
     setSelectedCompanyId(compId);
@@ -113,6 +146,18 @@ const RoomSellView: React.FC<RoomSellViewProps> = ({ room, onClose, onRoomUpdate
   const [showGuestSearch, setShowGuestSearch] = useState(false);
   const [showFolioAdd, setShowFolioAdd] = useState(false);
   const [showReservationConfirm, setShowReservationConfirm] = useState(false);
+  const [showRoomMove, setShowRoomMove] = useState(false);
+  const [showQuickReservation, setShowQuickReservation] = useState(false);
+  const [invoiceModalOpen, setInvoiceModalOpen] = useState(false);
+  const [invoicePdfResult, setInvoicePdfResult] = useState<
+    { pdfUrl: string; invoiceNo: string; timedOut: boolean } | null
+  >(null);
+  /* Bakiyeli çıkışta zorla çıkış sebebi (patron / müdür) */
+  const [forcePrompt, setForcePrompt] = useState<{
+    message: string;
+    params: { transferToCompany?: boolean };
+  } | null>(null);
+  const [historyGuest, setHistoryGuest] = useState<RoomGuest | null>(null);
 
   const isAvailable = room.status === ROOM_STATUS.AVAILABLE;
   const isOccupied = room.status === ROOM_STATUS.OCCUPIED;
@@ -124,12 +169,18 @@ const RoomSellView: React.FC<RoomSellViewProps> = ({ room, onClose, onRoomUpdate
   const activeReservationId = room.reservationId ?? pendingReservationId;
 
   /* room.guests parent'tan güncellendiğinde local state'i sync et (rezerve/dolu durumlarda).
-   * Boş odada (reservation yok) kullanıcı misafir ekliyor → local state korunur. */
+   * Boş odada (reservation yok) kullanıcı misafir ekliyor → local state korunur.
+   * Rezervasyon kapandıysa (check-out / iptal / taşıma) liste boşalır. */
   const roomGuestSignature = (room.guests || []).map(g => `${g.guestId}`).join(',');
+  const prevReservationIdRef = useRef(room.reservationId);
   useEffect(() => {
     if (room.reservationId) {
       setGuests(room.guests || []);
+    } else if (prevReservationIdRef.current) {
+      setGuests([]);
+      setPendingReservationId(null);
     }
+    prevReservationIdRef.current = room.reservationId;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [room.reservationId, roomGuestSignature]);
 
@@ -154,6 +205,36 @@ const RoomSellView: React.FC<RoomSellViewProps> = ({ room, onClose, onRoomUpdate
   const folioPayments = folioTotals.payments;
   const folioTotal = folioTotals.total;
   const folioBalance = folioTotals.balance;
+
+  /* Yeni rezervasyon / walk-in check-in'de gönderilen acente alanları */
+  const agencyPayload = selectedAgencyId
+    ? { agencyId: selectedAgencyId, agencyReservationCode: agencyCode.trim() || undefined }
+    : {};
+
+  /* Mevcut rezervasyonda firma/acente değiştirildi mi? (kaydedilmeden check-out yapılmaz) */
+  const hasStayInfoChanges = !!room.reservationId && (
+    selectedCompanyId !== (room.reservationCompanyId ?? null)
+    || selectedAgencyId !== (room.reservationAgencyId ?? null)
+    || agencyCode.trim() !== (room.reservationAgencyCode || '')
+  );
+
+  const handleSaveStayInfo = async () => {
+    if (!room.reservationId) return;
+    setLoading(true);
+    try {
+      await reservationsApi.update(room.reservationId, {
+        companyId: selectedCompanyId,
+        agencyId: selectedAgencyId,
+        agencyReservationCode: selectedAgencyId ? agencyCode.trim() : '',
+      });
+      Alert.alert('Başarılı', 'Firma ve acente bilgisi kaydedildi.');
+      onRoomUpdate();
+    } catch (err) {
+      Alert.alert('Hata', (err as Error).message || 'Kaydedilemedi');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   /* ─── Misafir ekleme (rezerve/dolu ise API, müsait ise local state) ─── */
   const handleNewGuestSave = async (guest: Guest) => {
@@ -206,30 +287,87 @@ const RoomSellView: React.FC<RoomSellViewProps> = ({ room, onClose, onRoomUpdate
     setShowGuestSearch(false);
   };
 
-  const handleRemoveGuest = (guestId: number) => {
-    Alert.alert('Misafir Çıkar', 'Bu misafiri odadan çıkarmak istiyor musunuz?', [
-      { text: 'İptal', style: 'cancel' },
-      {
-        text: 'Çıkar',
-        style: 'destructive',
-        onPress: async () => {
-          if (isOccupied) {
-            try {
-              await roomsApi.checkOut(room.id, { guestId });
-              onRoomUpdate();
-            } catch (err: any) {
-              Alert.alert('Hata', err.message);
-            }
-          } else if (isReserved) {
-            /* Rezerve durumda: stay'i kaldırmak için backend remove_guest yok,
-               sadece local'den sil — kullanıcı rezervasyonu iptal etmek isterse "Rezervasyon İptal" var */
-            setGuests((prev) => prev.filter((g) => g.guestId !== guestId));
-          } else {
-            setGuests((prev) => prev.filter((g) => g.guestId !== guestId));
-          }
+  /* ─── Misafir menüsü ───
+   * Boş odada (rezervasyon yok) misafirler sadece yerel listede → listeden çıkarılır.
+   * Rezerve/dolu odada web'deki kebab menüyle aynı işlemler (backend kuralları geçerli). */
+  const runGuestAction = async (action: () => Promise<unknown>, success?: string) => {
+    setLoading(true);
+    try {
+      await action();
+      if (success) Alert.alert('Başarılı', success);
+      onRoomUpdate();
+    } catch (err) {
+      Alert.alert('Hata', (err as Error).message || 'İşlem yapılamadı');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGuestMenu = (guest: RoomGuest) => {
+    if (!guestApiMode) {
+      Alert.alert(guest.guestName, 'Misafir listeden çıkarılsın mı?', [
+        { text: 'Vazgeç', style: 'cancel' },
+        {
+          text: 'Listeden Çıkar',
+          style: 'destructive',
+          onPress: () => setGuests((prev) => prev.filter((g) => g.guestId !== guest.guestId)),
         },
+      ]);
+      return;
+    }
+
+    const isLastGuest = guests.length <= 1;
+    const options: { text: string; style?: 'destructive' | 'cancel'; onPress?: () => void }[] = [
+      { text: 'Konaklama Geçmişi', onPress: () => setHistoryGuest(guest) },
+    ];
+    if (isOccupied) {
+      options.push({
+        text: 'Check-out Yap',
+        onPress: () => {
+          /* Son misafirin çıkışı = oda check-out'u (bakiye / cari / zorla çıkış akışı) */
+          if (isLastGuest) { handleCheckOut(); return; }
+          Alert.alert('Misafir Check-out', `${guest.guestName} için check-out yapılsın mı?`, [
+            { text: 'Vazgeç', style: 'cancel' },
+            {
+              text: 'Check-out Yap',
+              onPress: () => runGuestAction(() => roomsApi.checkOut(room.id, { guestId: guest.guestId, staffName: user?.name })),
+            },
+          ]);
+        },
+      });
+    }
+    if (!isLastGuest) {
+      options.push({
+        text: 'Odadan Çıkar',
+        style: 'destructive',
+        onPress: () => Alert.alert(
+          'Misafiri Çıkar',
+          `${guest.guestName} yanlışlıkla eklendiyse odadan çıkarılır (konaklama kaydı silinir). Devam edilsin mi?`,
+          [
+            { text: 'Vazgeç', style: 'cancel' },
+            { text: 'Çıkar', style: 'destructive', onPress: () => runGuestAction(() => roomsApi.removeGuest(room.id, guest.guestId)) },
+          ],
+        ),
+      });
+    }
+    options.push({
+      text: 'Kara Liste (Engelle / Kaldır)',
+      onPress: async () => {
+        try {
+          const updated = await guestsApi.toggleBlock(guest.guestId);
+          Alert.alert(
+            'Kara Liste',
+            updated.isBlocked
+              ? `${guest.guestName} kara listeye alındı. Mevcut konaklaması devam ediyor.`
+              : `${guest.guestName} kara listeden çıkarıldı.`,
+          );
+        } catch (err) {
+          Alert.alert('Hata', (err as Error).message || 'İşlem yapılamadı');
+        }
       },
-    ]);
+    });
+    options.push({ text: 'Kapat', style: 'cancel' });
+    Alert.alert(guest.guestName, guest.phone || undefined, options);
   };
 
   /* ─── Folio Ekle butonuna basıldı: reservation yoksa otomatik walk-in dialog'u çıkar ─── */
@@ -262,6 +400,7 @@ const RoomSellView: React.FC<RoomSellViewProps> = ({ room, onClose, onRoomUpdate
                 checkIn: today,
                 notes,
                 companyId: selectedCompanyId ?? undefined,
+                ...agencyPayload,
                 staffName: user?.name,
               });
               for (let i = 1; i < guests.length; i++) {
@@ -341,6 +480,7 @@ const RoomSellView: React.FC<RoomSellViewProps> = ({ room, onClose, onRoomUpdate
         checkOut: checkOut || undefined,
         notes,
         companyId: selectedCompanyId ?? undefined,
+        ...agencyPayload,
         staffName: user?.name,
       });
       /* Ek misafirler — backend rezerve durumda check_in=None ile ekler */
@@ -382,13 +522,20 @@ const RoomSellView: React.FC<RoomSellViewProps> = ({ room, onClose, onRoomUpdate
 
   /* ─── Check-in ─── */
   const handleCheckIn = () => {
-    /* Bugün girişli rezervasyon kontrolü */
-    const today = new Date().toISOString().split('T')[0];
+    /* Rezerve oda → mevcut rezervasyon check-in'e çevrilir (giriş tarihi ileride olsa da: erken giriş).
+     * Yer tutucu (sadece isimli) rezervasyonda önce kalıcı misafir kaydı eklenmeli — web ile aynı kural. */
+    const localToday = new Date();
+    const today = `${localToday.getFullYear()}-${String(localToday.getMonth() + 1).padStart(2, '0')}-${String(localToday.getDate()).padStart(2, '0')}`;
     const checkInDate = room.reservationCheckIn ? room.reservationCheckIn.split('T')[0] : null;
-    const isReserved = room.reservationStatus === 'reserved' && room.reservationId && checkInDate === today;
+    const isEarlyArrival = isReserved && !!checkInDate && checkInDate > today;
 
-    if (!isReserved && guests.length === 0) {
-      Alert.alert('Uyarı', 'Check-in için en az 1 misafir eklemelisiniz.');
+    if (guests.length === 0) {
+      Alert.alert(
+        'Misafir Gerekli',
+        isReserved
+          ? 'Check-in için kalıcı misafir kaydı gerekiyor. Önce kimlik bilgileriyle misafir ekleyin.'
+          : 'Check-in için en az 1 misafir eklemelisiniz.',
+      );
       return;
     }
 
@@ -407,9 +554,12 @@ const RoomSellView: React.FC<RoomSellViewProps> = ({ room, onClose, onRoomUpdate
       }
     }
 
+    const guestList = guests.map((g) => g.guestName).join(', ');
     const message = isReserved
-      ? `Oda ${room.number} — Rezervasyon sahibi: ${room.reservationOwnerName}\n\nCheck-in yapılsın mı?`
-      : `Oda ${room.number} için check-in yapılsın mı?\n\nMisafir: ${guests.map((g) => g.guestName).join(', ')}`;
+      ? `Oda ${room.number} — Rezervasyon sahibi: ${room.reservationOwnerName || guestList}`
+        + (isEarlyArrival ? `\n\nRezervasyonun giriş tarihi ${new Date(room.reservationCheckIn!).toLocaleDateString('tr-TR')} — erken giriş yapılacak.` : '')
+        + '\n\nCheck-in yapılsın mı?'
+      : `Oda ${room.number} için check-in yapılsın mı?\n\nMisafir: ${guestList}`;
 
     Alert.alert(
       'Check-in',
@@ -422,20 +572,21 @@ const RoomSellView: React.FC<RoomSellViewProps> = ({ room, onClose, onRoomUpdate
             setLoading(true);
             try {
               if (isReserved) {
-                /* Mevcut rezervasyonu check-in'e çevir — dropdown'dan seçili firma gönderilir */
+                /* Mevcut rezervasyonu check-in'e çevir — dropdown'dan seçili firma gönderilir.
+                 * Misafirler zaten rezervasyonda (rezerve odada eklenenler direkt API'ye gider);
+                 * backend hepsinin giriş saatini yazar. */
                 await reservationsApi.checkIn(room.reservationId!, {
                   companyId: selectedCompanyId,
+                  agencyId: selectedAgencyId,
+                  agencyReservationCode: selectedAgencyId ? agencyCode.trim() : '',
                 });
-                /* Varsa ek misafirler ekle */
-                for (let i = 0; i < guests.length; i++) {
-                  await roomsApi.addGuest(room.id, guests[i].guestId);
-                }
               } else {
                 /* Direkt check-in → Reservation + Stay oluşur */
                 await roomsApi.checkIn(room.id, {
                   guestId: guests[0].guestId,
                   notes,
                   companyId: selectedCompanyId ?? undefined,
+                  ...agencyPayload,
                 });
                 for (let i = 1; i < guests.length; i++) {
                   await roomsApi.addGuest(room.id, guests[i].guestId);
@@ -458,7 +609,7 @@ const RoomSellView: React.FC<RoomSellViewProps> = ({ room, onClose, onRoomUpdate
    * Backend artık eksik room_charge'i kendisi yazıyor (gün ortası çıkışta otomatik).
    * Mobile sadece şirket cariye yansıtma + force kontrolünü yönetir.
    */
-  const canForce = user?.role === 'patron' || user?.role === 'manager';
+  const canForce = isAdmin(user);
 
   const performCheckOut = async (params: {
     force?: boolean;
@@ -478,25 +629,8 @@ const RoomSellView: React.FC<RoomSellViewProps> = ({ room, onClose, onRoomUpdate
     } catch (err: unknown) {
       const error = err as { message?: string; balance?: number; requireForce?: boolean };
       if (error.requireForce && canForce) {
-        Alert.prompt(
-          'Bakiye Var',
-          `${error.message}\n\nZorla çıkış için sebep girin:`,
-          [
-            { text: 'İptal', style: 'cancel' },
-            {
-              text: 'Zorla Çıkış',
-              style: 'destructive',
-              onPress: (reason?: string) => {
-                if (!reason || !reason.trim()) {
-                  Alert.alert('Hata', 'Sebep zorunlu');
-                  return;
-                }
-                performCheckOut({ ...params, force: true, forceReason: reason.trim() });
-              },
-            },
-          ],
-          'plain-text',
-        );
+        /* Sebep girişi PromptModal ile (Alert.prompt Android'de çalışmaz) */
+        setForcePrompt({ message: error.message || 'Odada ödenmemiş bakiye var.', params });
       } else if (error.requireForce) {
         Alert.alert(
           'Bakiye Var',
@@ -511,6 +645,10 @@ const RoomSellView: React.FC<RoomSellViewProps> = ({ room, onClose, onRoomUpdate
   };
 
   const handleCheckOut = () => {
+    if (hasStayInfoChanges) {
+      Alert.alert('Kaydedilmemiş Değişiklik', 'Firma / acente değişikliğini önce "Firma ve Acenteyi Kaydet" ile kaydedin.');
+      return;
+    }
     // Şirket bağlamı varsa cariye yansıtma seçeneği sun
     if (selectedCompanyId && folioBalance > 0) {
       const company = companies.find((c) => c.id === selectedCompanyId);
@@ -541,28 +679,50 @@ const RoomSellView: React.FC<RoomSellViewProps> = ({ room, onClose, onRoomUpdate
     ]);
   };
 
-  /* ─── İptal ─── */
-  const handleCancel = () => {
-    Alert.alert('Rezervasyon İptal', 'Misafirler çıkarılıp oda müsait yapılsın mı?', [
-      { text: 'Hayır', style: 'cancel' },
-      {
-        text: 'Evet, İptal Et',
-        style: 'destructive',
-        onPress: async () => {
-          setLoading(true);
-          try {
-            await roomsApi.checkOut(room.id);
-            await roomsApi.updateStatus(room.id, ROOM_STATUS.AVAILABLE);
-            onRoomUpdate();
-          } catch (err: any) {
-            Alert.alert('Hata', err.message);
-          } finally {
-            setLoading(false);
-          }
+  /* ─── Check-in İptal (dolu oda) ───
+   * Rezervasyon 'Rezerve'ye döner, oda müsait olur; misafir ve folio kayıtları korunur.
+   * Rezervasyonu tamamen iptal etmek için sonra "Rezervasyon İptal" kullanılır. */
+  const handleRevertCheckin = () => {
+    if (!room.reservationId) return;
+    Alert.alert(
+      'Check-in İptal',
+      `Oda ${room.number} check-in'i geri alınacak. Rezervasyon "Rezerve" durumuna döner, misafir ve folio kayıtları korunur.\n\nDevam edilsin mi?`,
+      [
+        { text: 'Vazgeç', style: 'cancel' },
+        {
+          text: 'Check-in İptal',
+          style: 'destructive',
+          onPress: () => runGuestAction(() => reservationsApi.revertCheckin(room.reservationId!)),
         },
-      },
-    ]);
+      ],
+    );
   };
+
+  /* ─── Check-out İptal (son 24 saat) — oda tekrar dolu olur ─── */
+  const handleRevertCheckout = () => {
+    Alert.alert(
+      'Check-out İptal',
+      `Oda ${room.number} için son 24 saatte yapılan check-out geri alınacak. Oda tekrar dolu olur.\n\nDevam edilsin mi?`,
+      [
+        { text: 'Vazgeç', style: 'cancel' },
+        {
+          text: 'Geri Al',
+          onPress: () => runGuestAction(() => roomsApi.revertCheckout(room.id), 'Check-out geri alındı.'),
+        },
+      ],
+    );
+  };
+
+  const handleRoomMoved = (targetRoomNumber: string) => {
+    setShowRoomMove(false);
+    onRoomUpdate();
+    onClose();
+    deferAlert('Oda Taşındı', `Misafirler Oda ${targetRoomNumber} odasına taşındı.`);
+  };
+
+  const showAdmin = isAdmin(user);
+  const kbsEnabled = isModuleEnabled(user, 'kbs');
+  const invoicesEnabled = isModuleEnabled(user, 'invoices');
 
   return (
     <View style={styles.container}>
@@ -610,31 +770,12 @@ const RoomSellView: React.FC<RoomSellViewProps> = ({ room, onClose, onRoomUpdate
             <Text style={styles.sectionTitle}>Konaklama Bilgileri</Text>
           </View>
 
-          {/* Firma seçimi — açılır menü */}
-          <Text style={{ fontSize: 13, fontWeight: '600', color: colors.textSecondary, marginBottom: 4 }}>Firma</Text>
-          <TouchableOpacity
-            style={{
-              flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-              backgroundColor: '#f8fafc', borderWidth: 1, borderColor: colors.border,
-              borderRadius: borderRadius.md, padding: 12, marginBottom: 12,
-            }}
-            onPress={() => {
-              const options = [
-                { text: 'Bireysel (Firma Yok)', onPress: () => handleCompanyChange(null) },
-                ...companies.map(c => ({
-                  text: `${c.name}${c.agreedRate ? ` — ${Number(c.agreedRate).toLocaleString('tr-TR')} ₺/gece` : ''}`,
-                  onPress: () => handleCompanyChange(c.id),
-                })),
-              ];
-              Alert.alert('Firma Seçin', undefined, [
-                ...options.map(o => ({ text: o.text, onPress: o.onPress })),
-                { text: 'İptal', style: 'cancel' as const },
-              ]);
-            }}
-          >
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+          {/* Firma seçimi */}
+          <Text style={styles.fieldLabel}>Firma</Text>
+          <TouchableOpacity style={styles.selectField} onPress={() => setPicker('company')}>
+            <View style={styles.selectFieldInner}>
               <Ionicons name="business-outline" size={18} color={colors.textSecondary} />
-              <Text style={{ fontSize: 14, color: selectedCompanyId ? colors.textPrimary : colors.textDisabled, fontWeight: selectedCompanyId ? '600' : '400' }}>
+              <Text style={[styles.selectFieldText, !selectedCompanyId && styles.selectFieldPlaceholder]}>
                 {selectedCompanyId
                   ? companies.find(c => c.id === selectedCompanyId)?.name || 'Firma'
                   : 'Firma Seçin (Opsiyonel)'}
@@ -655,6 +796,38 @@ const RoomSellView: React.FC<RoomSellViewProps> = ({ room, onClose, onRoomUpdate
               </View>
             ) : null;
           })()}
+
+          {/* Acente seçimi + rezervasyon kodu */}
+          <Text style={styles.fieldLabel}>Acente</Text>
+          <TouchableOpacity style={styles.selectField} onPress={() => setPicker('agency')}>
+            <View style={styles.selectFieldInner}>
+              <Ionicons name="globe-outline" size={18} color={colors.textSecondary} />
+              <Text style={[styles.selectFieldText, !selectedAgencyId && styles.selectFieldPlaceholder]}>
+                {selectedAgencyId
+                  ? agencies.find(a => a.id === selectedAgencyId)?.name || 'Acente'
+                  : 'Acente Seçin (Opsiyonel)'}
+              </Text>
+            </View>
+            <Ionicons name="chevron-down" size={18} color={colors.textSecondary} />
+          </TouchableOpacity>
+          {!!selectedAgencyId && (
+            <AppInput
+              label="Acente Rezervasyon Kodu"
+              value={agencyCode}
+              onChangeText={setAgencyCode}
+              icon="barcode-outline"
+            />
+          )}
+          {hasStayInfoChanges && (
+            <AppButton
+              title="Firma ve Acenteyi Kaydet"
+              variant="outline"
+              icon="save-outline"
+              loading={loading}
+              onPress={handleSaveStayInfo}
+              style={{ marginBottom: spacing.sm }}
+            />
+          )}
 
           {/* Gecelik ücret */}
           <AppInput
@@ -709,6 +882,16 @@ const RoomSellView: React.FC<RoomSellViewProps> = ({ room, onClose, onRoomUpdate
               </View>
             )}
 
+            {isReserved && guests.length === 0 && !!room.placeholderGuestName && (
+              <View style={styles.placeholderInfo}>
+                <Ionicons name="information-circle-outline" size={18} color={colors.warning} />
+                <Text style={styles.placeholderText}>
+                  Ön kayıt: {room.placeholderGuestName}{room.placeholderGuestPhone ? ` · ${room.placeholderGuestPhone}` : ''}.
+                  {' '}Check-in için "Yeni Misafir" ile kimlik bilgilerini girin.
+                </Text>
+              </View>
+            )}
+
             {guests.map((guest) => (
               <View key={guest.guestId} style={styles.guestRow}>
                 <Ionicons name="person-circle-outline" size={28} color={colors.primary} />
@@ -718,8 +901,12 @@ const RoomSellView: React.FC<RoomSellViewProps> = ({ room, onClose, onRoomUpdate
                     <Text style={styles.guestPhone}>{guest.phone}</Text>
                   )}
                 </View>
-                <TouchableOpacity onPress={() => handleRemoveGuest(guest.guestId)}>
-                  <Ionicons name="close-circle" size={22} color={colors.error} />
+                <TouchableOpacity onPress={() => handleGuestMenu(guest)} hitSlop={8} disabled={loading}>
+                  <Ionicons
+                    name={guestApiMode ? 'ellipsis-vertical' : 'close-circle'}
+                    size={22}
+                    color={guestApiMode ? colors.textSecondary : colors.error}
+                  />
                 </TouchableOpacity>
               </View>
             ))}
@@ -846,8 +1033,28 @@ const RoomSellView: React.FC<RoomSellViewProps> = ({ room, onClose, onRoomUpdate
             />
         </AppCard>
 
-        {/* Aksiyon Butonları */}
-        {isAvailable && (
+        {/* KBS — sadece dolu odada ve modül açıksa */}
+        {isOccupied && kbsEnabled && <RoomKbsCard roomId={room.id} isOccupied={isOccupied} />}
+
+        {/* Fatura Kes — dolu odada, fatura modülü açıksa (web: oda detayı → Fatura) */}
+        {isOccupied && invoicesEnabled && (
+          <AppCard style={styles.card}>
+            <View style={styles.sectionHeader}>
+              <Ionicons name="receipt-outline" size={20} color={colors.primary} />
+              <Text style={styles.sectionTitle}>Fatura</Text>
+            </View>
+            <Text style={styles.invoiceHint}>
+              Paraşüt üzerinden e-Arşiv / e-Fatura kesin. Müşteri ve folio bilgileri otomatik doldurulur.
+            </Text>
+            <AppButton title="Fatura Kes" icon="receipt" onPress={() => setInvoiceModalOpen(true)} style={{ marginTop: spacing.sm }} />
+          </AppCard>
+        )}
+
+        {/* İşlem Geçmişi — patron / genel müdür (web ile aynı) */}
+        {showAdmin && <RoomAuditLogCard roomId={room.id} />}
+
+        {/* Aksiyon Butonları — rezerve oda kirli olsa da (misafir erken geldi) check-in yapılabilir */}
+        {(isAvailable || isReserved) && (
           <>
             <AppButton
               title="Check-in Yap"
@@ -865,6 +1072,15 @@ const RoomSellView: React.FC<RoomSellViewProps> = ({ room, onClose, onRoomUpdate
                 variant="secondary"
                 disabled={guests.length === 0}
                 loading={loading}
+                style={{ marginBottom: spacing.sm }}
+              />
+            )}
+            {!isReserved && !room.reservationId && !pendingReservationId && guests.length === 0 && (
+              <AppButton
+                title="Ön Kayıt (İsim / Telefon ile Rezervasyon)"
+                onPress={() => setShowQuickReservation(true)}
+                icon="call-outline"
+                variant="outline"
                 style={{ marginBottom: spacing.sm }}
               />
             )}
@@ -892,14 +1108,35 @@ const RoomSellView: React.FC<RoomSellViewProps> = ({ room, onClose, onRoomUpdate
               style={{ marginBottom: spacing.sm }}
             />
             <AppButton
-              title="Rezervasyon İptal"
-              onPress={handleCancel}
-              icon="close-circle-outline"
+              title="Oda Taşı"
+              onPress={() => setShowRoomMove(true)}
+              icon="swap-horizontal-outline"
+              variant="outline"
+              disabled={loading}
+              style={{ marginBottom: spacing.sm }}
+            />
+            <AppButton
+              title="Check-in İptal"
+              onPress={handleRevertCheckin}
+              icon="arrow-undo-outline"
               variant="danger"
               loading={loading}
               style={{ marginBottom: spacing.sm }}
             />
           </>
+        )}
+
+        {/* Check-out İptal — rezervasyonu olmayan oda (son 24 saatte çıkış yapıldıysa backend geri alır) */}
+        {!isOccupied && !room.reservationId && !pendingReservationId && guests.length === 0
+          && (room.status === ROOM_STATUS.DIRTY || isAvailable) && (
+          <AppButton
+            title="Check-out İptal"
+            onPress={handleRevertCheckout}
+            icon="arrow-undo-outline"
+            variant="outline"
+            loading={loading}
+            style={{ marginBottom: spacing.sm }}
+          />
         )}
       </ScrollView>
 
@@ -908,6 +1145,11 @@ const RoomSellView: React.FC<RoomSellViewProps> = ({ room, onClose, onRoomUpdate
         visible={showNewGuest}
         onClose={() => setShowNewGuest(false)}
         onSave={handleNewGuestSave}
+        initialValues={isReserved && guests.length === 0 && room.placeholderGuestName ? {
+          firstName: room.placeholderGuestName.trim().split(/\s+/).slice(0, -1).join(' '),
+          lastName: room.placeholderGuestName.trim().split(/\s+/).slice(-1)[0],
+          phone: room.placeholderGuestPhone,
+        } : undefined}
       />
       <GuestSearchModal
         visible={showGuestSearch}
@@ -925,9 +1167,89 @@ const RoomSellView: React.FC<RoomSellViewProps> = ({ room, onClose, onRoomUpdate
         roomNumber={room.number}
         guests={guests}
         companyName={selectedCompanyId ? companies.find(c => c.id === selectedCompanyId)?.name : null}
+        agencyName={selectedAgencyId ? agencies.find(a => a.id === selectedAgencyId)?.name : null}
         notes={notes}
         onClose={() => setShowReservationConfirm(false)}
         onConfirm={submitReservation}
+      />
+      <RoomMoveModal
+        visible={showRoomMove}
+        sourceRoom={{ id: room.id, number: room.number }}
+        onClose={() => setShowRoomMove(false)}
+        onMoved={handleRoomMoved}
+      />
+      <InvoiceFormModal
+        visible={invoiceModalOpen}
+        roomId={room.id}
+        roomNumber={room.number}
+        createdBy={user?.name}
+        onClose={() => setInvoiceModalOpen(false)}
+        onSuccess={(result) => {
+          setInvoiceModalOpen(false);
+          setInvoicePdfResult({ pdfUrl: result.pdfUrl, invoiceNo: result.invoiceNo, timedOut: result.status === 'timeout' });
+        }}
+      />
+      <InvoicePdfModal
+        visible={!!invoicePdfResult}
+        pdfUrl={invoicePdfResult?.pdfUrl || ''}
+        invoiceNo={invoicePdfResult?.invoiceNo || ''}
+        timedOut={invoicePdfResult?.timedOut}
+        onClose={() => setInvoicePdfResult(null)}
+      />
+      <PromptModal
+        visible={!!forcePrompt}
+        title="Zorla Çıkış"
+        message={`${forcePrompt?.message || ''}\n\nZorla çıkış için sebep girin (işlem geçmişine yazılır):`}
+        placeholder="Sebep"
+        confirmText="Zorla Çıkış"
+        destructive
+        validate={(v) => (v.trim() ? null : 'Sebep zorunlu')}
+        onConfirm={(reason) => {
+          const params = forcePrompt?.params || {};
+          performCheckOut({ ...params, force: true, forceReason: reason.trim() });
+        }}
+        onClose={() => setForcePrompt(null)}
+      />
+      <NewReservationModal
+        visible={showQuickReservation}
+        initialRoomId={room.id}
+        initialQuick
+        onClose={() => setShowQuickReservation(false)}
+        onSaved={onRoomUpdate}
+      />
+      <OptionPickerModal<number | null>
+        visible={picker === 'company'}
+        title="Firma Seçin"
+        options={[
+          { value: null, label: 'Bireysel (Firma Yok)' },
+          ...companies.map((c) => ({
+            value: c.id,
+            label: c.name,
+            sublabel: c.agreedRate ? `${Number(c.agreedRate).toLocaleString('tr-TR')} ₺/gece` : undefined,
+          })),
+        ]}
+        selectedValue={selectedCompanyId}
+        onSelect={handleCompanyChange}
+        onClose={() => setPicker(null)}
+      />
+      <OptionPickerModal<number | null>
+        visible={picker === 'agency'}
+        title="Acente Seçin"
+        options={[
+          { value: null, label: 'Acente Yok' },
+          ...agencies
+            .filter((a) => a.isActive !== false || a.id === selectedAgencyId)
+            .map((a) => ({ value: a.id, label: a.name })),
+        ]}
+        selectedValue={selectedAgencyId}
+        onSelect={(v) => { setSelectedAgencyId(v); if (!v) setAgencyCode(''); }}
+        onClose={() => setPicker(null)}
+      />
+      <GuestStayHistoryModal
+        visible={!!historyGuest}
+        guestId={historyGuest?.guestId ?? null}
+        guestName={historyGuest?.guestName || ''}
+        onClose={() => setHistoryGuest(null)}
       />
     </View>
   );
@@ -988,6 +1310,32 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   sectionTitle: { fontSize: fontSize.md, fontWeight: '700', color: colors.textPrimary },
+  fieldLabel: { fontSize: 13, fontWeight: '600', color: colors.textSecondary, marginBottom: 4 },
+  selectField: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: borderRadius.md,
+    padding: 12,
+    marginBottom: 12,
+  },
+  selectFieldInner: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 },
+  selectFieldText: { fontSize: 14, color: colors.textPrimary, fontWeight: '600' },
+  selectFieldPlaceholder: { color: colors.textDisabled, fontWeight: '400' },
+  placeholderInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: colors.warning + '15',
+    borderRadius: borderRadius.md,
+    padding: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  placeholderText: { flex: 1, fontSize: fontSize.xs, color: colors.textPrimary },
+  invoiceHint: { fontSize: fontSize.xs, color: colors.textSecondary },
   guestRow: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -7,6 +7,8 @@
  *   - Doluluk oranı (backend'den)
  *   - Dolu oda detayları (folio toplamlarıyla)
  *   - Bugünkü check-in/check-out listesi
+ *   - Alt raporlar: Genel Rapor, Oda Raporu, Firma Raporu, Gün Sonu Raporları
+ * Hem alt sekme (MainTabs) hem Görevler menüsünden açılır; menüden açılınca geri butonu görünür.
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -17,14 +19,17 @@ import {
   ScrollView,
   RefreshControl,
   ActivityIndicator,
+  TouchableOpacity,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 import { AppCard, AppButton } from '../../components/common';
+import NightAuditHistoryView from '../../components/nightaudit/NightAuditHistoryView';
+import StayReportScreen from './StayReportScreen';
 import { colors, spacing, fontSize } from '../../theme';
 import { kazancApi, staffApi } from '../../services/api';
 import useAuth from '../../hooks/useAuth';
-import { ROLES } from '../../utils/constants';
+import { ROLES, FOLIO_CATEGORY_LABELS } from '../../utils/constants';
 import GeneralReportScreen from './GeneralReportScreen';
 
 interface StatBoxProps {
@@ -34,17 +39,10 @@ interface StatBoxProps {
   color: string;
 }
 
-const FOLIO_LABELS: Record<string, string> = {
-  room_charge: 'Oda Ücreti',
-  minibar: 'Minibar',
-  restaurant: 'Restoran',
-  service: 'Hizmet',
-  discount: 'İndirim',
-  payment: 'Ödeme',
-};
+type SubReport = 'general' | 'room' | 'company' | 'nightAudit' | null;
 
-const ReportsScreen: React.FC<{ onClose?: () => void }> = () => {
-  const [showGeneralReport, setShowGeneralReport] = useState(false);
+const ReportsScreen: React.FC<{ onClose?: () => void }> = ({ onClose }) => {
+  const [subReport, setSubReport] = useState<SubReport>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [stats, setStats] = useState<any>(null);
@@ -104,27 +102,62 @@ const ReportsScreen: React.FC<{ onClose?: () => void }> = () => {
     );
   }
 
-  if (showGeneralReport) {
-    return <GeneralReportScreen onClose={() => setShowGeneralReport(false)} />;
+  if (subReport === 'general') {
+    return <GeneralReportScreen onClose={() => setSubReport(null)} />;
+  }
+  if (subReport === 'room' || subReport === 'company') {
+    return <StayReportScreen mode={subReport} onClose={() => setSubReport(null)} />;
+  }
+  if (subReport === 'nightAudit') {
+    return (
+      <View style={styles.container}>
+        <View style={[styles.header, styles.headerRow]}>
+          <TouchableOpacity onPress={() => setSubReport(null)}>
+            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
+          </TouchableOpacity>
+          <Text style={styles.title}>Gün Sonu Raporları</Text>
+          <View style={{ width: 24 }} />
+        </View>
+        <NightAuditHistoryView />
+      </View>
+    );
   }
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
+      <View style={[styles.header, onClose && styles.headerRow]}>
+        {onClose && (
+          <TouchableOpacity onPress={onClose}>
+            <Ionicons name="close" size={28} color={colors.textPrimary} />
+          </TouchableOpacity>
+        )}
         <Text style={styles.title}>Raporlar</Text>
+        {onClose && <View style={{ width: 28 }} />}
       </View>
 
       <ScrollView
         contentContainerStyle={styles.content}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[colors.primary]} />}
       >
-        {/* Genel Rapor Butonu */}
+        {/* Alt raporlar */}
         <AppButton
           title="Genel Rapor (Aylık Detay)"
-          onPress={() => setShowGeneralReport(true)}
+          onPress={() => setSubReport('general')}
           icon="bar-chart-outline"
-          style={{ marginBottom: spacing.md }}
+          style={{ marginBottom: spacing.sm }}
         />
+        <View style={styles.subReportRow}>
+          {([
+            ['room', 'Oda Raporu', 'bed-outline'],
+            ['company', 'Firma Raporu', 'business-outline'],
+            ['nightAudit', 'Gün Sonu', 'moon-outline'],
+          ] as [SubReport, string, keyof typeof Ionicons.glyphMap][]).map(([key, label, icon]) => (
+            <TouchableOpacity key={key} style={styles.subReportBtn} onPress={() => setSubReport(key)}>
+              <Ionicons name={icon} size={20} color={colors.primary} />
+              <Text style={styles.subReportText}>{label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
 
         {/* === Sabit Giderler — sadece patron/müdür === */}
         {isManagement && (
@@ -182,7 +215,7 @@ const ReportsScreen: React.FC<{ onClose?: () => void }> = () => {
             <View style={styles.folioGrid}>
               {Object.entries(folioBreakdown).map(([cat, amount]) => (
                 <AppCard key={cat} style={styles.folioBox}>
-                  <Text style={styles.folioLabel}>{FOLIO_LABELS[cat] || cat}</Text>
+                  <Text style={styles.folioLabel}>{FOLIO_CATEGORY_LABELS[cat] || cat}</Text>
                   <Text style={[styles.folioValue, { color: cat === 'payment' ? colors.success : cat === 'discount' ? colors.warning : colors.primary }]}>
                     {(amount as number).toLocaleString('tr-TR')} ₺
                   </Text>
@@ -301,6 +334,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   title: { fontSize: fontSize.lg, fontWeight: '700', color: colors.textPrimary },
+  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  subReportRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md },
+  subReportBtn: {
+    flex: 1, alignItems: 'center', gap: 4, paddingVertical: 12, borderRadius: 10,
+    borderWidth: 1.5, borderColor: colors.primary, backgroundColor: colors.primary + '10',
+  },
+  subReportText: { fontSize: fontSize.xs, fontWeight: '700', color: colors.primary },
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background },
   loadingText: { fontSize: fontSize.md, color: colors.textSecondary, marginTop: spacing.md },
   content: { padding: spacing.md, paddingBottom: spacing.xxl },

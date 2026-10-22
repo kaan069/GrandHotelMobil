@@ -189,7 +189,8 @@ export interface paths {
         };
         /**
          * @description GET /api/accounting/income-expense/?dateFrom=&dateTo=
-         *     Gelir (folio charge kalemleri) + Gider (Expense) + net, kategori kırılımıyla.
+         *     Gelir (folio charge kalemleri − indirim) + Gider (Expense) + net, kategori kırılımıyla.
+         *     İndirim gelirden düşülür — kazanc raporlarıyla (Dashboard, Ciro) aynı hesap.
          */
         get: operations["accounting_income_expense_retrieve"];
         put?: never;
@@ -328,7 +329,8 @@ export interface paths {
         };
         /**
          * @description GET /api/agencies/{id}/reservations/
-         *     Acenteden gelen rezervasyonları listeler.
+         *     Acenteden gelen rezervasyonları listeler (iptal edilenler hariç).
+         *     Ciro / borç toplamı ekranda sadece BILLABLE_STATUSES ile hesaplanır.
          */
         get: operations["agencies_reservations_retrieve"];
         put?: never;
@@ -862,7 +864,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** @description GET /api/commission/list/?employeeId=5&dateFrom=2026-04-01&dateTo=2026-04-30 */
+        /**
+         * @description GET /api/commission/list/?employeeId=5&dateFrom=2026-04-01&dateTo=2026-04-30
+         *
+         *     Komisyon raporu: toplamlar ve personel bazlı özet TÜM kayıtlar üzerinden
+         *     veritabanında hesaplanır; detay satırları en fazla ITEM_LIMIT kadardır.
+         *     (Eskiden sıralamasız ilk 200 kayıt dönüyordu → aylık toplamlar eksik çıkabiliyordu.)
+         */
         get: operations["commission_list_retrieve"];
         put?: never;
         post?: never;
@@ -2655,6 +2663,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/leaves/request/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description POST /api/leaves/request/ — Personelin kendi adına izin talebi.
+         *     Body: { "leaveType": "annual", "startDate": "2026-11-01", "endDate": "2026-11-03",
+         *             "note": "...", "deductFromAnnual": false }
+         *
+         *     Talep 'pending' olarak oluşur; patron/müdür onaylar ya da reddeder.
+         *     Kişi token'dan belirlenir (body'deki employeeId dikkate alınmaz).
+         *     (Metot adı 'request' olamaz — ViewSet'in self.request'i ile çakışır.)
+         */
+        post: operations["leaves_request_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/menu-categories/": {
         parameters: {
             query?: never;
@@ -2666,6 +2699,7 @@ export interface paths {
          * @description Menü kategorisi CRUD.
          *     Liste: items olmadan döner (performans için MenuCategoryListSerializer kullanır).
          *     Detay: nested items ile döner (MenuCategorySerializer kullanır).
+         *     Okuma herkese açık (garson menüyü görür); düzenleme yönetici / restoran müdürü.
          */
         get: operations["menu_categories_list"];
         put?: never;
@@ -2673,6 +2707,7 @@ export interface paths {
          * @description Menü kategorisi CRUD.
          *     Liste: items olmadan döner (performans için MenuCategoryListSerializer kullanır).
          *     Detay: nested items ile döner (MenuCategorySerializer kullanır).
+         *     Okuma herkese açık (garson menüyü görür); düzenleme yönetici / restoran müdürü.
          */
         post: operations["menu_categories_create"];
         delete?: never;
@@ -2692,12 +2727,14 @@ export interface paths {
          * @description Menü kategorisi CRUD.
          *     Liste: items olmadan döner (performans için MenuCategoryListSerializer kullanır).
          *     Detay: nested items ile döner (MenuCategorySerializer kullanır).
+         *     Okuma herkese açık (garson menüyü görür); düzenleme yönetici / restoran müdürü.
          */
         get: operations["menu_categories_retrieve"];
         /**
          * @description Menü kategorisi CRUD.
          *     Liste: items olmadan döner (performans için MenuCategoryListSerializer kullanır).
          *     Detay: nested items ile döner (MenuCategorySerializer kullanır).
+         *     Okuma herkese açık (garson menüyü görür); düzenleme yönetici / restoran müdürü.
          */
         put: operations["menu_categories_update"];
         post?: never;
@@ -2705,6 +2742,7 @@ export interface paths {
          * @description Menü kategorisi CRUD.
          *     Liste: items olmadan döner (performans için MenuCategoryListSerializer kullanır).
          *     Detay: nested items ile döner (MenuCategorySerializer kullanır).
+         *     Okuma herkese açık (garson menüyü görür); düzenleme yönetici / restoran müdürü.
          */
         delete: operations["menu_categories_destroy"];
         options?: never;
@@ -2713,6 +2751,7 @@ export interface paths {
          * @description Menü kategorisi CRUD.
          *     Liste: items olmadan döner (performans için MenuCategoryListSerializer kullanır).
          *     Detay: nested items ile döner (MenuCategorySerializer kullanır).
+         *     Okuma herkese açık (garson menüyü görür); düzenleme yönetici / restoran müdürü.
          */
         patch: operations["menu_categories_partial_update"];
         trace?: never;
@@ -2728,6 +2767,8 @@ export interface paths {
          * @description Menü ürünü CRUD.
          *     hotel_filter: MenuItem'ın direkt hotel FK'sı yok, category üzerinden filtrelenir.
          *     Filtreler: ?categoryId=X, ?isAvailable=true/false
+         *     Düzenleme (fiyat dahil) yönetici / restoran müdürü; mutfak ve bar sadece
+         *     "tükendi / mevcut" (isAvailable) işaretleyebilir.
          */
         get: operations["menu_items_list"];
         put?: never;
@@ -2735,6 +2776,8 @@ export interface paths {
          * @description Menü ürünü CRUD.
          *     hotel_filter: MenuItem'ın direkt hotel FK'sı yok, category üzerinden filtrelenir.
          *     Filtreler: ?categoryId=X, ?isAvailable=true/false
+         *     Düzenleme (fiyat dahil) yönetici / restoran müdürü; mutfak ve bar sadece
+         *     "tükendi / mevcut" (isAvailable) işaretleyebilir.
          */
         post: operations["menu_items_create"];
         delete?: never;
@@ -2754,12 +2797,16 @@ export interface paths {
          * @description Menü ürünü CRUD.
          *     hotel_filter: MenuItem'ın direkt hotel FK'sı yok, category üzerinden filtrelenir.
          *     Filtreler: ?categoryId=X, ?isAvailable=true/false
+         *     Düzenleme (fiyat dahil) yönetici / restoran müdürü; mutfak ve bar sadece
+         *     "tükendi / mevcut" (isAvailable) işaretleyebilir.
          */
         get: operations["menu_items_retrieve"];
         /**
          * @description Menü ürünü CRUD.
          *     hotel_filter: MenuItem'ın direkt hotel FK'sı yok, category üzerinden filtrelenir.
          *     Filtreler: ?categoryId=X, ?isAvailable=true/false
+         *     Düzenleme (fiyat dahil) yönetici / restoran müdürü; mutfak ve bar sadece
+         *     "tükendi / mevcut" (isAvailable) işaretleyebilir.
          */
         put: operations["menu_items_update"];
         post?: never;
@@ -2767,6 +2814,8 @@ export interface paths {
          * @description Menü ürünü CRUD.
          *     hotel_filter: MenuItem'ın direkt hotel FK'sı yok, category üzerinden filtrelenir.
          *     Filtreler: ?categoryId=X, ?isAvailable=true/false
+         *     Düzenleme (fiyat dahil) yönetici / restoran müdürü; mutfak ve bar sadece
+         *     "tükendi / mevcut" (isAvailable) işaretleyebilir.
          */
         delete: operations["menu_items_destroy"];
         options?: never;
@@ -2775,6 +2824,8 @@ export interface paths {
          * @description Menü ürünü CRUD.
          *     hotel_filter: MenuItem'ın direkt hotel FK'sı yok, category üzerinden filtrelenir.
          *     Filtreler: ?categoryId=X, ?isAvailable=true/false
+         *     Düzenleme (fiyat dahil) yönetici / restoran müdürü; mutfak ve bar sadece
+         *     "tükendi / mevcut" (isAvailable) işaretleyebilir.
          */
         patch: operations["menu_items_partial_update"];
         trace?: never;
@@ -3409,6 +3460,7 @@ export interface paths {
          *     Check-in yapmış ve hâlâ otelde kalan (checkout olmamış) misafirlerin
          *     isim, soyisim, TC no ve oda numarası bilgilerini döndürür.
          *     İnternet hizmeti sağlayıcısı entegrasyonu için kullanılır.
+         *     Kişisel veri (TC no) içerdiği için sadece ön büro ve sadece kendi oteli.
          */
         get: operations["reservations_active_guests_retrieve"];
         put?: never;
@@ -3818,9 +3870,10 @@ export interface paths {
          * @description POST /api/rooms/{id}/remove_guest/
          *     Body: {"guestId": 5}
          *
-         *     Stay kaydını siler. Odada başka aktif misafir kalmadıysa:
-         *       - Reservation kapatılır (status='checked_out', is_active=False)
-         *       - Oda 'dirty' yapılır (check_out action'ı ile aynı mantık)
+         *     Yanlışlıkla eklenen misafiri düzeltmek içindir: Stay kaydını siler.
+         *     Odadaki son misafir bu yolla çıkarılamaz — aksi halde rezervasyon bakiye
+         *     kontrolü (check-out) yapılmadan kapanırdı. Konaklamayı bitirmek için
+         *     check-out, girişi geri almak için check-in iptal kullanılır.
          */
         post: operations["rooms_remove_guest_create"];
         delete?: never;
@@ -4191,7 +4244,7 @@ export interface paths {
         /**
          * @description POST /api/staff/{id}/reset_password/
          *     Yeni rastgele 4 haneli şifre üretir, hash'ler ve plaintext döner.
-         *     Sadece müdür/patron çağırmalı (frontend kontrol eder).
+         *     Sadece patron / genel müdür (IsHotelAdmin); patron hesabını sadece patron sıfırlar.
          */
         post: operations["staff_reset_password_create"];
         delete?: never;
@@ -5199,9 +5252,12 @@ export interface components {
          *     * `checkin_reversed` - Check-in Geri Alındı
          *     * `force_checkout` - Zorla Çıkış
          *     * `room_moved` - Oda Taşındı
+         *     * `checkout` - Check-out
+         *     * `guest_checkout` - Misafir Check-out
+         *     * `guest_removed_from_company` - Misafir Firmadan Çıkarıldı
          * @enum {string}
          */
-        ActionEnum: "guest_removed" | "folio_deleted" | "checkout_reversed" | "checkin_reversed" | "force_checkout" | "room_moved";
+        ActionEnum: "guest_removed" | "folio_deleted" | "checkout_reversed" | "checkin_reversed" | "force_checkout" | "room_moved" | "checkout" | "guest_checkout" | "guest_removed_from_company";
         Agency: {
             readonly id: number;
             /** Acente Adı */
@@ -5256,7 +5312,7 @@ export interface components {
             roomId: number;
             action: components["schemas"]["ActionEnum"];
             description?: string;
-            performedBy: string;
+            performedBy?: string;
             /** Format: date-time */
             readonly createdAt: string;
         };
@@ -5277,7 +5333,7 @@ export interface components {
             roomId: number;
             action: components["schemas"]["ActionEnum"];
             description?: string;
-            performedBy: string;
+            performedBy?: string;
         };
         BmsAlert: {
             readonly id: number;
@@ -5409,6 +5465,34 @@ export interface components {
         Choice: {
             value: string;
             label: string;
+        };
+        CommissionEmployeeSummary: {
+            employeeId: number;
+            employeeName: string;
+            count: number;
+            totalSales: string;
+            totalCommission: string;
+        };
+        CommissionItem: {
+            id: number;
+            employeeId: number;
+            employeeName: string;
+            tabNo: string;
+            tableNumber: string;
+            tabTotal: string;
+            commissionRate: string;
+            commissionAmount: string;
+            /** Format: date */
+            date: string;
+        };
+        CommissionReport: {
+            count: number;
+            totalSales: string;
+            totalCommission: string;
+            byEmployee: components["schemas"]["CommissionEmployeeSummary"][];
+            items: components["schemas"]["CommissionItem"][];
+            /** @description Detay satırları ITEM_LIMIT ile kırpıldıysa true (toplamlar yine tam) */
+            truncated: boolean;
         };
         /**
          * @description Firma CRUD serializer'ı.
@@ -5729,13 +5813,15 @@ export interface components {
             reportedBy: string;
             readonly resolvedBy: string;
             /** Format: date-time */
-            readonly resolvedAt: string;
+            readonly resolvedAt: string | null;
             /** Format: date-time */
             readonly createdAt: string;
             /** Format: date-time */
             readonly updatedAt: string;
-            readonly photos: string;
-            readonly resolutionPhotos: string;
+            /** @description Arıza bildirimi fotoğrafları. */
+            readonly photos: string[];
+            /** @description Onarım kanıt fotoğrafları. */
+            readonly resolutionPhotos: string[];
         };
         /**
          * @description * `electric` - Elektrik
@@ -6087,20 +6173,20 @@ export interface components {
             readonly id: number;
             employeeId: number;
             readonly employeeName: string;
-            leaveType: string;
+            leaveType: components["schemas"]["LeaveTypeEnum"];
             /** Format: date */
             startDate: string;
             /** Format: date */
             endDate: string;
-            readonly durationDays: string;
+            readonly durationDays: number;
             /** Durum */
-            status?: components["schemas"]["LeaveStatusEnum"];
+            readonly status: components["schemas"]["LeaveStatusEnum"];
             /** @default false */
             deductFromAnnual: boolean;
             /** Not */
             note?: string;
-            approvedById?: number | null;
-            readonly approvedByName: string;
+            readonly approvedById: number | null;
+            readonly approvedByName: string | null;
             /** Format: date-time */
             readonly createdAt: string;
         };
@@ -6110,18 +6196,15 @@ export interface components {
          */
         LeaveRequest: {
             employeeId: number;
-            leaveType: string;
+            leaveType: components["schemas"]["LeaveTypeEnum"];
             /** Format: date */
             startDate: string;
             /** Format: date */
             endDate: string;
-            /** Durum */
-            status?: components["schemas"]["LeaveStatusEnum"];
             /** @default false */
             deductFromAnnual: boolean;
             /** Not */
             note?: string;
-            approvedById?: number | null;
         };
         /**
          * @description * `pending` - Onay Bekliyor
@@ -6131,6 +6214,14 @@ export interface components {
          * @enum {string}
          */
         LeaveStatusEnum: "pending" | "approved" | "rejected" | "cancelled";
+        /**
+         * @description * `weekly` - Haftalık İzin
+         *     * `annual` - Yıllık İzin
+         *     * `daily` - Günlük İzin
+         *     * `unpaid` - Ücretsiz İzin
+         * @enum {string}
+         */
+        LeaveTypeEnum: "weekly" | "annual" | "daily" | "unpaid";
         LoginRequestRequest: {
             branchCode: string;
             staffNumber: string;
@@ -6200,7 +6291,8 @@ export interface components {
              * Format: uri
              */
             image?: string | null;
-            readonly imageUrl: string;
+            /** @description Görsel varsa tam URL döner, yoksa None. */
+            readonly imageUrl: string | null;
             /** @default true */
             isAvailable: boolean;
             /** @default true */
@@ -6529,18 +6621,15 @@ export interface components {
          */
         PatchedLeaveRequest: {
             employeeId?: number;
-            leaveType?: string;
+            leaveType?: components["schemas"]["LeaveTypeEnum"];
             /** Format: date */
             startDate?: string;
             /** Format: date */
             endDate?: string;
-            /** Durum */
-            status?: components["schemas"]["LeaveStatusEnum"];
             /** @default false */
             deductFromAnnual: boolean;
             /** Not */
             note?: string;
-            approvedById?: number | null;
         };
         /**
          * @description Kategori detay — nested items ile birlikte döner.
@@ -8888,12 +8977,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description No response body */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["CommissionReport"];
+                };
             };
         };
     };
@@ -11280,6 +11370,31 @@ export interface operations {
                 /** @description Bir İzin öğesini tanımlayan benzersiz tamsayı değeri. */
                 id: number;
             };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LeaveRequest"];
+                "application/x-www-form-urlencoded": components["schemas"]["LeaveRequest"];
+                "multipart/form-data": components["schemas"]["LeaveRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Leave"];
+                };
+            };
+        };
+    };
+    leaves_request_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
             cookie?: never;
         };
         requestBody: {
