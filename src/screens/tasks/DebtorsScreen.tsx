@@ -5,6 +5,8 @@
  * açık konaklama sayısı, en eski borç, bakiye. Filtre: Tümü / Şahıs / Firma-Acente.
  * Borçluya dokununca detay: borç kutucukları (DebtCards — konaklama başına, seçip tahsilat);
  * firma / acentede altında cari hesap ekstresi (CariStatement — geçmiş, avans, iptal).
+ * "Konaklayan" çipi: henüz çıkış yapmamış, folio borcu olan odalar
+ * (GET /reservations/?filter=in_house_unpaid) — ödeme Oda Durumu → oda detayından alınır.
  * Web karşılığı: pages/guests/DebtorList.tsx
  */
 
@@ -25,14 +27,15 @@ import { AppCard, EmptyState, LoadingState } from '../../components/common';
 import DebtCards from '../../components/cari/DebtCards';
 import CariStatement from '../../components/cari/CariStatement';
 import { colors, spacing, fontSize, borderRadius } from '../../theme';
-import { accountTransactionsApi } from '../../services/api';
+import { accountTransactionsApi, reservationsApi } from '../../services/api';
 import type { CariDebtorPartyRow, CariDebtorsResponse, CariTargetType } from '../../services/api';
+import type { Reservation } from '../../utils/types';
 
 interface DebtorsScreenProps {
   onClose: () => void;
 }
 
-type FilterType = 'all' | 'guest' | 'company_or_agency';
+type FilterType = 'all' | 'guest' | 'company_or_agency' | 'in_house';
 
 const formatCurrency = (amount: number): string =>
   `₺${amount.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -57,6 +60,7 @@ const TARGET_ICON: Record<CariTargetType, keyof typeof Ionicons.glyphMap> = {
 
 const DebtorsScreen: React.FC<DebtorsScreenProps> = ({ onClose }) => {
   const [data, setData] = useState<CariDebtorsResponse | null>(null);
+  const [inHouse, setInHouse] = useState<Reservation[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [filter, setFilter] = useState<FilterType>('all');
@@ -68,7 +72,12 @@ const DebtorsScreen: React.FC<DebtorsScreenProps> = ({ onClose }) => {
 
   const load = useCallback(async () => {
     try {
-      setData(await accountTransactionsApi.getDebtors());
+      const [debtors, inHouseRows] = await Promise.all([
+        accountTransactionsApi.getDebtors(),
+        reservationsApi.getAll({ filter: 'in_house_unpaid' }),
+      ]);
+      setData(debtors);
+      setInHouse(inHouseRows);
     } catch (err) {
       Alert.alert('Hata', (err as Error).message || 'Borçlular yüklenemedi');
     }
@@ -93,6 +102,8 @@ const DebtorsScreen: React.FC<DebtorsScreenProps> = ({ onClose }) => {
   });
   const guestCount = items.filter((i) => i.targetType === 'guest').length;
   const corpCount = items.length - guestCount;
+  const debtOf = (r: Reservation) => (Number(r.totalAmount) || 0) - (Number(r.paidAmount) || 0);
+  const inHouseTotal = inHouse.reduce((s, r) => s + debtOf(r), 0);
 
   /* ─── Borçlu detayı ─── */
   if (selected) {
@@ -154,28 +165,29 @@ const DebtorsScreen: React.FC<DebtorsScreenProps> = ({ onClose }) => {
           {data && (
             <View style={styles.summaryRow}>
               <View style={[styles.summaryBox, { backgroundColor: colors.error + '15' }]}>
-                <Text style={styles.summaryLabel}>Toplam</Text>
+                <Text style={styles.summaryLabel}>Cari Borç</Text>
                 <Text style={[styles.summaryValue, { color: colors.error }]}>
                   {formatCurrency(Number(data.summary.totalBalance) || 0)}
                 </Text>
               </View>
-              <View style={[styles.summaryBox, { backgroundColor: colors.divider }]}>
-                <Text style={styles.summaryLabel}>Borçlu</Text>
-                <Text style={styles.summaryValue}>{data.summary.count}</Text>
+              <View style={[styles.summaryBox, { backgroundColor: colors.error + '15' }]}>
+                <Text style={styles.summaryLabel}>Konaklayan</Text>
+                <Text style={[styles.summaryValue, { color: colors.error }]}>{formatCurrency(inHouseTotal)}</Text>
               </View>
               <View style={[styles.summaryBox, { backgroundColor: colors.divider }]}>
-                <Text style={styles.summaryLabel}>Açık Konaklama</Text>
-                <Text style={styles.summaryValue}>{data.summary.openCount}</Text>
+                <Text style={styles.summaryLabel}>Cari Borçlu</Text>
+                <Text style={styles.summaryValue}>{data.summary.count}</Text>
               </View>
             </View>
           )}
 
           {/* Filtre sekmeleri */}
-          <View style={styles.filterRow}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterBar} contentContainerStyle={styles.filterRow}>
             {([
               ['all', `Tümü (${items.length})`],
               ['guest', `Şahıs (${guestCount})`],
               ['company_or_agency', `Firma/Acente (${corpCount})`],
+              ['in_house', `Konaklayan (${inHouse.length})`],
             ] as [FilterType, string][]).map(([value, label]) => (
               <TouchableOpacity
                 key={value}
@@ -185,8 +197,41 @@ const DebtorsScreen: React.FC<DebtorsScreenProps> = ({ onClose }) => {
                 <Text style={[styles.filterText, filter === value && styles.filterTextActive]}>{label}</Text>
               </TouchableOpacity>
             ))}
-          </View>
+          </ScrollView>
 
+          {filter === 'in_house' ? (
+            <FlatList
+              data={inHouse}
+              keyExtractor={(item) => String(item.id)}
+              contentContainerStyle={styles.list}
+              refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+              ListHeaderComponent={inHouse.length > 0
+                ? <Text style={styles.hint}>Ödeme almak için Oda Durumu ekranından odayı açın.</Text>
+                : null}
+              ListEmptyComponent={
+                <EmptyState icon="checkmark-done-circle-outline" title="Borçlu oda yok" description="Konaklayan tüm müşterilerin hesabı ödenmiş." />
+              }
+              renderItem={({ item }) => (
+                <AppCard style={styles.itemCard}>
+                  <View style={styles.itemRow}>
+                    <View style={styles.roomBadge}>
+                      <Text style={styles.roomBadgeText}>{item.roomNumber}</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.itemTarget} numberOfLines={1}>{item.guestNames || item.placeholderGuestName || '—'}</Text>
+                      <Text style={styles.itemSub} numberOfLines={1}>
+                        {item.companyName || item.agencyName || 'Bireysel'} · giriş {formatDate(item.checkIn)}
+                      </Text>
+                      <Text style={styles.itemSub}>
+                        Harcama {formatCurrency(Number(item.totalAmount) || 0)} · Ödenen {formatCurrency(Number(item.paidAmount) || 0)}
+                      </Text>
+                    </View>
+                    <Text style={styles.itemAmount}>{formatCurrency(debtOf(item))}</Text>
+                  </View>
+                </AppCard>
+              )}
+            />
+          ) : (
           <FlatList
             data={filteredItems}
             keyExtractor={(item) => `${item.targetType}-${item.id}`}
@@ -224,6 +269,7 @@ const DebtorsScreen: React.FC<DebtorsScreenProps> = ({ onClose }) => {
               );
             }}
           />
+          )}
         </>
       )}
     </View>
@@ -249,10 +295,13 @@ const styles = StyleSheet.create({
   },
   summaryLabel: { fontSize: fontSize.xs, color: colors.textSecondary, marginBottom: 2 },
   summaryValue: { fontSize: fontSize.md, fontWeight: '800', color: colors.textPrimary },
-  filterRow: {
-    flexDirection: 'row', paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
-    gap: 8, backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border,
+  filterBar: {
+    flexGrow: 0, backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border,
   },
+  filterRow: { flexDirection: 'row', paddingHorizontal: spacing.md, paddingVertical: spacing.sm, gap: 8 },
+  hint: { fontSize: fontSize.xs, color: colors.textSecondary, marginBottom: spacing.sm },
+  roomBadge: { backgroundColor: colors.primary + '15', paddingHorizontal: 10, paddingVertical: 6, borderRadius: borderRadius.sm },
+  roomBadgeText: { fontSize: fontSize.md, fontWeight: '800', color: colors.primary },
   filterChip: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     paddingHorizontal: 14, paddingVertical: 6, borderRadius: borderRadius.full, backgroundColor: colors.divider,

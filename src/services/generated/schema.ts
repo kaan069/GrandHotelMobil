@@ -7119,6 +7119,12 @@ export interface components {
             readonly reservationAgencyId: string;
             readonly reservationAgencyName: string;
             readonly reservationAgencyCode: string;
+            /**
+             * @description Konaklayan (checked_in) rezervasyonun folio bakiyesi: >0 müşteri borçlu, 0 ödendi,
+             *     <0 fazla ödeme. total_amount / paid_amount her folio değişiminde refresh_totals ile
+             *     güncellenir → ek sorgu yok. Konaklama yoksa null.
+             */
+            readonly folioBalance: string | null;
             /** Notlar */
             notes?: string | null;
             readonly minibar: string;

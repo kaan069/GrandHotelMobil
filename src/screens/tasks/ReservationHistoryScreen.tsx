@@ -44,7 +44,8 @@ import {
 } from '../../utils/constants';
 import { reservationsApi, tabsApi } from '../../services/api';
 import type { Reservation, ReservationDetail, ApiTab } from '../../utils/types';
-import { calcFolioTotals, isFolioDeductionRow } from '../../utils/folio';
+import { isFolioDeductionRow } from '../../utils/folio';
+import FolioBalanceSummary from '../../components/rooms/FolioBalanceSummary';
 
 import NewReservationModal from '../../components/reservations/NewReservationModal';
 import ReservationEditModal from '../../components/reservations/ReservationEditModal';
@@ -220,8 +221,6 @@ const ReservationHistoryScreen: React.FC<ReservationHistoryScreenProps> = ({ onC
 
   /* ─── DETAY GÖRÜNÜMÜ ─── */
   if (selectedDetail) {
-    /* Cari aktarım ve indirimler de düşülür — utils/folio.ts (backend ile aynı hesap) */
-    const { charges, discounts, payments, balance } = calcFolioTotals(selectedDetail.folioItems || []);
     const isPast = !selectedDetail.isActive;
     const isReservedStatus = selectedDetail.status === RESERVATION_STATUS.RESERVED;
     const isCheckedInStatus = selectedDetail.status === RESERVATION_STATUS.CHECKED_IN;
@@ -378,26 +377,8 @@ const ReservationHistoryScreen: React.FC<ReservationHistoryScreenProps> = ({ onC
                     </Text>
                   </View>
                 ))}
-                <View style={styles.totalRow}>
-                  <Text style={styles.totalLabel}>Toplam Ücret</Text>
-                  <Text style={styles.totalValue}>{formatCurrency(charges)}</Text>
-                </View>
-                {discounts > 0 && (
-                  <View style={styles.totalRow}>
-                    <Text style={styles.totalLabel}>İndirim</Text>
-                    <Text style={[styles.totalValue, { color: '#F59E0B' }]}>-{formatCurrency(discounts)}</Text>
-                  </View>
-                )}
-                <View style={styles.totalRow}>
-                  <Text style={styles.totalLabel}>Ödenen</Text>
-                  <Text style={[styles.totalValue, { color: '#22C55E' }]}>{formatCurrency(payments)}</Text>
-                </View>
-                <View style={[styles.totalRow, { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 8, marginTop: 4 }]}>
-                  <Text style={[styles.totalLabel, { fontWeight: '700' }]}>Bakiye</Text>
-                  <Text style={[styles.totalValue, { color: balance > 0 ? '#EF4444' : '#22C55E', fontWeight: '700' }]}>
-                    {formatCurrency(balance)}
-                  </Text>
-                </View>
+                {/* Hesap özeti: harcama / ödenen / kırmızı "Borçlu" */}
+                <FolioBalanceSummary folios={selectedDetail.folioItems || []} />
               </>
             ) : (
               <Text style={styles.emptyText}>Hesap kaydı yok</Text>
@@ -614,9 +595,11 @@ const ReservationHistoryScreen: React.FC<ReservationHistoryScreenProps> = ({ onC
                     {Number(item.paidAmount) > 0 && (
                       <Text style={styles.rezPaid}>Ödenen: {formatCurrency(item.paidAmount)}</Text>
                     )}
-                    {Number(item.totalAmount) - Number(item.paidAmount) > 0 && (
+                    {/* Konaklamış / konaklayan müşterinin kalan borcu (rezervede henüz harcama yok) */}
+                    {item.status !== RESERVATION_STATUS.RESERVED && item.status !== RESERVATION_STATUS.CANCELLED
+                      && Number(item.totalAmount) - Number(item.paidAmount) > 0.004 && (
                       <Text style={styles.rezBalance}>
-                        Bakiye: {formatCurrency(Number(item.totalAmount) - Number(item.paidAmount))}
+                        Borç: {formatCurrency(Number(item.totalAmount) - Number(item.paidAmount))}
                       </Text>
                     )}
                   </View>
@@ -832,9 +815,6 @@ const styles = StyleSheet.create({
   folioCategory: { fontSize: 10, fontWeight: '600', color: colors.primary, marginBottom: 2 },
   folioDesc: { fontSize: fontSize.sm, color: colors.textPrimary },
   folioAmount: { fontSize: fontSize.sm, fontWeight: '700', color: colors.textPrimary },
-  totalRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4, marginTop: 4 },
-  totalLabel: { fontSize: fontSize.sm, color: colors.textSecondary },
-  totalValue: { fontSize: fontSize.sm, fontWeight: '700', color: colors.textPrimary },
   emptyText: { fontSize: fontSize.sm, color: colors.textDisabled, textAlign: 'center', paddingVertical: spacing.md, fontStyle: 'italic' },
   loadingOverlay: {
     ...StyleSheet.absoluteFillObject,

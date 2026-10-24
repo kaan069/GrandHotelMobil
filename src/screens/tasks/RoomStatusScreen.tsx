@@ -372,6 +372,23 @@ const RoomStatusScreen: React.FC<RoomStatusScreenProps> = ({ onClose }) => {
                   </View>
                 )}
 
+                {/* Konaklayan müşterinin hesabı — ödemeyen kırmızı borç, ödeyen yeşil "Ödendi" */}
+                {room.status === ROOM_STATUS.OCCUPIED && room.folioBalance != null && (() => {
+                  const balance = Number(room.folioBalance) || 0;
+                  const shown = Math.abs(balance).toLocaleString('tr-TR', { maximumFractionDigits: 0 });
+                  return (
+                    <Text
+                      style={[
+                        styles.balanceText,
+                        { color: balance > 0.004 ? colors.error : balance < -0.004 ? colors.warning : colors.success },
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {balance > 0.004 ? `Borç ₺${shown}` : balance < -0.004 ? `İade ₺${shown}` : 'Ödendi'}
+                    </Text>
+                  );
+                })()}
+
                 {/* Rezervasyon sahibi adı (bugün girişli rezerve ise) */}
                 {isReserved && room.reservationOwnerName && (
                   <View style={styles.guestRow}>
@@ -533,6 +550,11 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     fontWeight: '600',
     flex: 1,
+  },
+  balanceText: {
+    fontSize: 11,
+    fontWeight: '800',
+    marginTop: 2,
   },
 });
 

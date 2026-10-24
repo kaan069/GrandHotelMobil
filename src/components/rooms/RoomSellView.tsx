@@ -47,6 +47,7 @@ import { roomsApi, foliosApi, reservationsApi, companiesApi, guestsApi, agencies
 import type { RoomGuest, ApiFolioItem, Guest, FolioCategory, Company } from '../../utils/types';
 import { isAdmin, isModuleEnabled } from '../../utils/permissions';
 import { calcFolioTotals, isFolioDeductionRow } from '../../utils/folio';
+import FolioBalanceSummary from './FolioBalanceSummary';
 
 import NewGuestModal from './NewGuestModal';
 import GuestSearchModal from './GuestSearchModal';
@@ -201,8 +202,6 @@ const RoomSellView: React.FC<RoomSellViewProps> = ({ room, onClose, onRoomUpdate
   /* Folio hesaplamaları — utils/folio.ts (tek doğruluk kaynağı) */
   const parseAmount = (a: number | string) => typeof a === 'string' ? parseFloat(a) : a;
   const folioTotals = calcFolioTotals(folios);
-  const folioPayments = folioTotals.payments;
-  const folioTotal = folioTotals.total;
   const folioBalance = folioTotals.balance;
 
   /* Yeni rezervasyon / walk-in check-in'de gönderilen acente alanları */
@@ -1015,25 +1014,8 @@ const RoomSellView: React.FC<RoomSellViewProps> = ({ room, onClose, onRoomUpdate
                   </View>
                 ))}
 
-                <View style={styles.folioSummary}>
-                  <View style={styles.folioSummaryRow}>
-                    <Text style={styles.folioSummaryLabel}>Toplam</Text>
-                    <Text style={styles.folioSummaryValue}>{formatCurrency(folioTotal)}</Text>
-                  </View>
-                  <View style={styles.folioSummaryRow}>
-                    <Text style={styles.folioSummaryLabel}>Ödenen</Text>
-                    <Text style={[styles.folioSummaryValue, { color: '#22C55E' }]}>{formatCurrency(folioPayments)}</Text>
-                  </View>
-                  <View style={[styles.folioSummaryRow, styles.folioBalanceRow]}>
-                    <Text style={styles.folioBalanceLabel}>Bakiye</Text>
-                    <Text style={[
-                      styles.folioBalanceValue,
-                      { color: folioBalance > 0 ? colors.error : '#22C55E' },
-                    ]}>
-                      {formatCurrency(folioBalance)}
-                    </Text>
-                  </View>
-                </View>
+                {/* Müşterinin hesabı: harcama / ödenen / kırmızı "Borçlu" */}
+                <FolioBalanceSummary folios={folios} />
               </>
             ) : (
               <Text style={styles.emptyText}>Henüz folio kaydı yok</Text>
@@ -1404,23 +1386,6 @@ const styles = StyleSheet.create({
   folioAmount: { fontSize: fontSize.sm, fontWeight: '700', color: colors.textPrimary },
   folioAmountNeg: { color: '#22C55E' },
   folioDeleteBtn: { padding: 4 },
-  folioSummary: {
-    marginTop: spacing.sm,
-    paddingTop: spacing.sm,
-    borderTopWidth: 2,
-    borderTopColor: colors.divider,
-  },
-  folioSummaryRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3 },
-  folioSummaryLabel: { fontSize: fontSize.sm, color: colors.textSecondary },
-  folioSummaryValue: { fontSize: fontSize.sm, fontWeight: '600', color: colors.textPrimary },
-  folioBalanceRow: {
-    marginTop: 4,
-    paddingTop: 6,
-    borderTopWidth: 1,
-    borderTopColor: colors.divider,
-  },
-  folioBalanceLabel: { fontSize: fontSize.md, fontWeight: '700', color: colors.textPrimary },
-  folioBalanceValue: { fontSize: fontSize.md, fontWeight: '800' },
 });
 
 export default RoomSellView;
