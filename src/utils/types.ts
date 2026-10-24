@@ -133,6 +133,10 @@ export interface ApiFolioItem {
   amount: number | string;  // DecimalField string dönebilir
   date: string;
   createdBy?: string | null;
+  /** Ödeme kaleminde: cash | card | transfer | other (diğer kalemlerde boş) */
+  paymentMethod?: string;
+  /** Kaynak: manual | checkout | night_audit | minibar | restaurant */
+  origin?: string;
 }
 
 /* ==================== STOK ==================== */

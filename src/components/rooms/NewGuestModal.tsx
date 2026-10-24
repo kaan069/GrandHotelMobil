@@ -48,7 +48,6 @@ const NewGuestModal: React.FC<NewGuestModalProps> = ({ visible, onClose, onSave,
 
   // TC kontrolü
   const [tcStatus, setTcStatus] = useState<'idle' | 'checking' | 'found' | 'blocked' | 'new'>('idle');
-  const [foundGuestId, setFoundGuestId] = useState<number | null>(null);
 
   // MRZ kamera tarayıcı
   const [showMrzScan, setShowMrzScan] = useState(false);
@@ -56,7 +55,7 @@ const NewGuestModal: React.FC<NewGuestModalProps> = ({ visible, onClose, onSave,
   const resetForm = () => {
     setTcNo(''); setFirstName(''); setLastName('');
     setPhone(''); setEmail('');
-    setErrors({}); setTcStatus('idle'); setFoundGuestId(null);
+    setErrors({}); setTcStatus('idle');
   };
 
   useEffect(() => {
@@ -82,11 +81,9 @@ const NewGuestModal: React.FC<NewGuestModalProps> = ({ visible, onClose, onSave,
         setLastName(result.guest.lastName);
         setPhone(result.guest.phone || '');
         setEmail(result.guest.email || '');
-        setFoundGuestId(result.guest.id);
         setTcStatus(result.isBlocked ? 'blocked' : 'found');
       } else {
         setTcStatus('new');
-        setFoundGuestId(null);
       }
     } catch {
       setTcStatus('idle');
@@ -183,7 +180,7 @@ const NewGuestModal: React.FC<NewGuestModalProps> = ({ visible, onClose, onSave,
                   const v = t.replace(/\D/g, '').slice(0, 11);
                   setTcNo(v);
                   if (errors.tcNo) setErrors((p) => ({ ...p, tcNo: '' }));
-                  if (v.length < 11) { setTcStatus('idle'); setFoundGuestId(null); }
+                  if (v.length < 11) setTcStatus('idle');
                 }}
                 onBlur={() => handleTcBlur()}
                 placeholder="11 haneli TC kimlik numarası"

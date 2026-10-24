@@ -39,6 +39,7 @@ import {
   ROOM_STATUS_LABELS,
   ROOM_STATUS_COLORS,
   FOLIO_CATEGORY_LABELS,
+  FOLIO_PAYMENT_METHOD_LABELS,
 } from '../../utils/constants';
 import useAuth from '../../hooks/useAuth';
 import useHotelSettings from '../../hooks/useHotelSettings';
@@ -200,8 +201,6 @@ const RoomSellView: React.FC<RoomSellViewProps> = ({ room, onClose, onRoomUpdate
   /* Folio hesaplamaları — utils/folio.ts (tek doğruluk kaynağı) */
   const parseAmount = (a: number | string) => typeof a === 'string' ? parseFloat(a) : a;
   const folioTotals = calcFolioTotals(folios);
-  const folioCharges = folioTotals.charges;
-  const folioDiscounts = folioTotals.discounts;
   const folioPayments = folioTotals.payments;
   const folioTotal = folioTotals.total;
   const folioBalance = folioTotals.balance;
@@ -435,6 +434,7 @@ const RoomSellView: React.FC<RoomSellViewProps> = ({ room, onClose, onRoomUpdate
         amount: data.amount,
         date: new Date().toISOString().split('T')[0],
         createdBy: user?.name,
+        paymentMethod: data.paymentMethod,
       });
       setFolios((prev) => [...prev, folio]);
       setShowFolioAdd(false);
@@ -698,16 +698,28 @@ const RoomSellView: React.FC<RoomSellViewProps> = ({ room, onClose, onRoomUpdate
     );
   };
 
-  /* ─── Check-out İptal (son 24 saat) — oda tekrar dolu olur ─── */
+  /* ─── Check-out İptal (son 24 saat) — oda tekrar dolu olur ───
+     Backend çıkışta yazılan kapanış kalemlerini ve cari aktarımını siler, planlanan çıkış tarihini geri yükler */
   const handleRevertCheckout = () => {
     Alert.alert(
       'Check-out İptal',
-      `Oda ${room.number} için son 24 saatte yapılan check-out geri alınacak. Oda tekrar dolu olur.\n\nDevam edilsin mi?`,
+      `Oda ${room.number} için son 24 saatte yapılan check-out geri alınacak. Çıkışta yazılan kapanış kalemleri ve cari aktarımı silinir, oda tekrar dolu olur.\n\nDevam edilsin mi?`,
       [
         { text: 'Vazgeç', style: 'cancel' },
         {
           text: 'Geri Al',
-          onPress: () => runGuestAction(() => roomsApi.revertCheckout(room.id), 'Check-out geri alındı.'),
+          onPress: () => runGuestAction(async () => {
+            const res = await roomsApi.revertCheckout(room.id);
+            const removed = res.removedItems?.length ? `\n\nSilinen kalemler: ${res.removedItems.join(', ')}` : '';
+            if (res.kbsResendRequired) {
+              Alert.alert(
+                'Check-out geri alındı',
+                `KBS'ye çıkış bildirildiği için misafirlerin KBS girişini tekrar gönderin.${removed}`,
+              );
+            } else {
+              Alert.alert('Başarılı', `Check-out geri alındı.${removed}`);
+            }
+          }),
         },
       ],
     );
@@ -985,7 +997,10 @@ const RoomSellView: React.FC<RoomSellViewProps> = ({ room, onClose, onRoomUpdate
                           {FOLIO_CATEGORY_LABELS[folio.category]}
                         </Text>
                       </View>
-                      <Text style={styles.folioDesc} numberOfLines={1}>{folio.description}</Text>
+                      <Text style={styles.folioDesc} numberOfLines={1}>
+                        {folio.description}
+                        {folio.paymentMethod ? ` · ${FOLIO_PAYMENT_METHOD_LABELS[folio.paymentMethod] || folio.paymentMethod}` : ''}
+                      </Text>
                     </View>
                     <Text style={[
                       styles.folioAmount,

@@ -15,6 +15,7 @@ import useRoomWebSocket from '../hooks/useRoomWebSocket';
 import useAudioNotification from '../hooks/useAudioNotification';
 import type { NotificationSound } from '../hooks/useAudioNotification';
 import useAuth from '../hooks/useAuth';
+import type { ApiOrderItemStatus } from '../services/api';
 
 interface NotificationContextType {
   playSound: (type: NotificationSound) => void;
@@ -51,7 +52,7 @@ export const NotificationProvider: React.FC<Props> = ({ children }) => {
         play('new_order');
       }
     }, [isKitchenStaff, isManager, play]),
-    onOrderStatusUpdate: useCallback((order) => {
+    onOrderStatusUpdate: useCallback((order: ApiOrderItemStatus) => {
       // Garson/kasiyer → sipariş hazır sesi
       if ((isServiceStaff || isManager) && order.status === 'ready') {
         play('order_ready');

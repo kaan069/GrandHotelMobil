@@ -3,14 +3,15 @@
  *
  * İki görünüm:
  *   1. Tümü — acente listesi + ekleme
- *   2. Borçlu — gerçekleşmiş konaklamalarda ödenmemiş bakiyesi olan acenteler
+ *   2. Borçlu — cari bakiyesi > 0 olan acenteler (cari defter; Borçlular ekranıyla aynı kaynak)
  *
- * Acente detayı: bilgiler (komisyon, yetkili, cari bakiye), borç özeti,
- * konaklamalar (bakiyeli olana "Ödeme Ekle") ve gelecek (rezerve) rezervasyonlar.
+ * Acente detayı: bilgiler (komisyon, yetkili), açık borç kutucukları (DebtCards — konaklama başına,
+ * seçip tahsilat), cari hesap ekstresi (ciro / komisyon, avans tahsilatı, iptal — CariStatement),
+ * konaklamalar ve gelecek (rezerve) rezervasyonlar.
  * Düzenle: ad, iletişim, komisyon oranı, not, aktif/pasif.
  * Web karşılığı: pages/guests/AgencyList.tsx + components/agencies/*
  *
- * API: agenciesApi.getAll / create / update / getDebtors / getDebtDetail / getReservations / addPayment
+ * API: agenciesApi.getAll / create / update / getDebtors / getReservations; ekstre CariStatement'ta
  */
 
 import React, { useCallback, useEffect, useState } from 'react';
@@ -20,14 +21,14 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 
 import {
-  AppCard, AppButton, AppInput, EmptyState, LoadingState, StatusChip, PromptModal, parseAmount,
+  AppCard, AppButton, AppInput, EmptyState, LoadingState, StatusChip, parseAmount,
 } from '../../components/common';
+import CariStatement from '../../components/cari/CariStatement';
+import DebtCards from '../../components/cari/DebtCards';
 import { colors, spacing, fontSize, borderRadius } from '../../theme';
-import { deferAlert } from '../../utils/alert';
 import { RESERVATION_STATUS_LABELS, RESERVATION_STATUS_COLORS } from '../../utils/constants';
-import useAuth from '../../hooks/useAuth';
 import {
-  agenciesApi, Agency, AgencyInput, AgencyDebtor, AgencyDebtDetail, AgencyReservation,
+  agenciesApi, Agency, AgencyInput, CariDebtorRow, AgencyReservation,
 } from '../../services/api';
 
 interface AgencyScreenProps {
@@ -46,20 +47,19 @@ const EMPTY_FORM = { name: '', taxNumber: '', contactPerson: '', phone: '', emai
 type AgencyForm = typeof EMPTY_FORM;
 
 const AgencyScreen: React.FC<AgencyScreenProps> = ({ onClose }) => {
-  const { user } = useAuth();
-
   const [filter, setFilter] = useState<FilterType>('all');
   const [agencies, setAgencies] = useState<Agency[]>([]);
-  const [debtors, setDebtors] = useState<AgencyDebtor[]>([]);
+  const [debtors, setDebtors] = useState<CariDebtorRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   /* Detay */
   const [selected, setSelected] = useState<Agency | null>(null);
-  const [detail, setDetail] = useState<AgencyDebtDetail | null>(null);
-  const [upcoming, setUpcoming] = useState<AgencyReservation[]>([]);
+  const [reservations, setReservations] = useState<AgencyReservation[]>([]);
   const [detailLoading, setDetailLoading] = useState(false);
-  const [paymentTarget, setPaymentTarget] = useState<{ rezId: number; roomNumber: string; balance: number } | null>(null);
+  /* Borç kutucukları ve ekstre: biri değişince diğeri yeniden yüklenir */
+  const [debtsReload, setDebtsReload] = useState(0);
+  const [statementReload, setStatementReload] = useState(0);
 
   /* Form (ekle / düzenle) */
   const [formOpen, setFormOpen] = useState(false);
@@ -90,12 +90,7 @@ const AgencyScreen: React.FC<AgencyScreenProps> = ({ onClose }) => {
   const loadDetail = async (agencyId: number) => {
     setDetailLoading(true);
     try {
-      const [debt, all] = await Promise.all([
-        agenciesApi.getDebtDetail(agencyId),
-        agenciesApi.getReservations(agencyId),
-      ]);
-      setDetail(debt);
-      setUpcoming(all.filter((r) => r.status === 'reserved'));
+      setReservations(await agenciesApi.getReservations(agencyId));
     } catch (err) {
       Alert.alert('Hata', (err as Error).message || 'Acente detayı yüklenemedi');
     } finally {
@@ -112,8 +107,7 @@ const AgencyScreen: React.FC<AgencyScreenProps> = ({ onClose }) => {
     }
     if (!agency) return;
     setSelected(agency);
-    setDetail(null);
-    setUpcoming([]);
+    setReservations([]);
     loadDetail(agency.id);
   };
 
@@ -165,19 +159,6 @@ const AgencyScreen: React.FC<AgencyScreenProps> = ({ onClose }) => {
     }
   };
 
-  const submitPayment = async (value: string) => {
-    if (!paymentTarget || !selected) return;
-    const amount = parseAmount(value);
-    await agenciesApi.addPayment(selected.id, {
-      reservationId: paymentTarget.rezId,
-      amount,
-      description: 'Acente ödemesi',
-      staffName: user?.name || '',
-    });
-    deferAlert('Başarılı', `${formatCurrency(amount)} ödeme kaydedildi.`);
-    loadDetail(selected.id);
-  };
-
   const renderForm = () => (
     <Modal visible={formOpen} animationType="slide" transparent onRequestClose={() => setFormOpen(false)}>
       <View style={styles.modalOverlay}>
@@ -212,8 +193,8 @@ const AgencyScreen: React.FC<AgencyScreenProps> = ({ onClose }) => {
 
   /* ─── DETAY ─── */
   if (selected) {
-    const summary = detail?.summary;
-    const balance = Number(summary?.balance || 0);
+    const upcoming = reservations.filter((r) => r.status === 'reserved');
+    const stays = reservations.filter((r) => r.status !== 'reserved');
     return (
       <View style={styles.container}>
         <View style={styles.header}>
@@ -226,118 +207,81 @@ const AgencyScreen: React.FC<AgencyScreenProps> = ({ onClose }) => {
           </TouchableOpacity>
         </View>
 
-        {detailLoading && !detail ? (
-          <LoadingState message="Yükleniyor..." />
-        ) : (
-          <ScrollView contentContainerStyle={styles.detailContent}>
-            <AppCard style={styles.card}>
-              <View style={styles.sectionHeader}>
-                <Ionicons name="globe" size={20} color={colors.primary} />
-                <Text style={styles.sectionTitle}>Acente Bilgileri</Text>
-                {selected.isActive === false && <StatusChip label="Pasif" color={colors.textSecondary} />}
-              </View>
-              <InfoRow label="Komisyon" value={`%${Number(selected.commissionRate || 0)}`} />
-              <InfoRow label="Vergi No" value={selected.taxNumber || '—'} />
-              <InfoRow label="Yetkili" value={selected.contactPerson || '—'} />
-              <InfoRow label="Telefon" value={selected.phone || '—'} />
-              <InfoRow label="E-posta" value={selected.email || '—'} />
-              <InfoRow label="Adres" value={selected.address || '—'} />
-              <InfoRow
-                label="Açık Cari Bakiye"
-                value={formatCurrency(Number(selected.accountBalance || 0))}
-                valueColor={Number(selected.accountBalance || 0) > 0 ? colors.error : undefined}
-              />
-              {!!selected.notes && <Text style={styles.notesText}>{selected.notes}</Text>}
-            </AppCard>
+        <ScrollView contentContainerStyle={styles.detailContent}>
+          <AppCard style={styles.card}>
+            <View style={styles.sectionHeader}>
+              <Ionicons name="globe" size={20} color={colors.primary} />
+              <Text style={styles.sectionTitle}>Acente Bilgileri</Text>
+              {selected.isActive === false && <StatusChip label="Pasif" color={colors.textSecondary} />}
+            </View>
+            <InfoRow label="Komisyon" value={`%${Number(selected.commissionRate || 0)}`} />
+            <InfoRow label="Vergi No" value={selected.taxNumber || '—'} />
+            <InfoRow label="Yetkili" value={selected.contactPerson || '—'} />
+            <InfoRow label="Telefon" value={selected.phone || '—'} />
+            <InfoRow label="E-posta" value={selected.email || '—'} />
+            <InfoRow label="Adres" value={selected.address || '—'} />
+            {!!selected.notes && <Text style={styles.notesText}>{selected.notes}</Text>}
+          </AppCard>
 
-            {summary && (
-              <AppCard style={styles.card}>
-                <View style={styles.sectionHeader}>
-                  <Ionicons name="stats-chart" size={20} color={colors.primary} />
-                  <Text style={styles.sectionTitle}>Konaklama Özeti</Text>
-                </View>
-                <InfoRow label="Konaklama" value={`${summary.reservationCount} adet`} />
-                <InfoRow label="Ciro" value={formatCurrency(Number(summary.totalAmount))} />
-                <InfoRow label="Ödenen" value={formatCurrency(Number(summary.paidAmount))} valueColor={colors.success} />
-                <InfoRow label="Bakiye" value={formatCurrency(balance)} valueColor={balance > 0 ? colors.error : colors.success} />
-                <InfoRow label="Acente Komisyonu" value={formatCurrency(Number(summary.commission))} />
-              </AppCard>
-            )}
+          {/* Açık borçlar — konaklama başına kutucuk, seçip tahsilat */}
+          <DebtCards
+            target={{ agency: selected.id }}
+            reloadToken={debtsReload}
+            onChanged={() => setStatementReload((t) => t + 1)}
+          />
 
-            <AppCard style={styles.card}>
-              <View style={styles.sectionHeader}>
-                <Ionicons name="bed" size={20} color={colors.primary} />
-                <Text style={styles.sectionTitle}>Konaklamalar ({detail?.reservations.length || 0})</Text>
-              </View>
-              {(detail?.reservations || []).length === 0 ? (
-                <Text style={styles.emptyText}>Gerçekleşmiş konaklama yok</Text>
-              ) : (
-                detail!.reservations.map((r) => {
-                  const rBalance = Number(r.balance);
-                  return (
-                    <View key={r.id} style={styles.rezRow}>
-                      <View style={styles.rezTop}>
-                        <Text style={styles.rezRoom}>Oda {r.roomNumber}</Text>
-                        <StatusChip label={RESERVATION_STATUS_LABELS[r.status] || r.status} color={RESERVATION_STATUS_COLORS[r.status] || colors.textSecondary} />
-                      </View>
-                      {!!r.guestNames && <Text style={styles.rezMeta}>{r.guestNames}</Text>}
-                      <Text style={styles.rezMeta}>{formatDate(r.checkIn)} → {formatDate(r.checkOut)}{r.agencyReservationCode ? ` · Kod: ${r.agencyReservationCode}` : ''}</Text>
-                      <View style={styles.rezBottom}>
-                        <Text style={styles.rezMeta}>
-                          {formatCurrency(Number(r.totalAmount))} · Ödenen {formatCurrency(Number(r.paidAmount))}
-                        </Text>
-                        {rBalance > 0 && (
-                          <TouchableOpacity
-                            style={styles.payBtn}
-                            onPress={() => setPaymentTarget({ rezId: r.id, roomNumber: r.roomNumber, balance: rBalance })}
-                          >
-                            <Ionicons name="cash-outline" size={14} color={colors.primary} />
-                            <Text style={styles.payBtnText}>Ödeme Ekle · {formatCurrency(rBalance)}</Text>
-                          </TouchableOpacity>
-                        )}
-                      </View>
-                    </View>
-                  );
-                })
-              )}
-            </AppCard>
+          {/* Cari hesap ekstresi: bakiye, ciro / komisyon, avans tahsilatı, iptal */}
+          <CariStatement
+            kind="agency"
+            partyId={selected.id}
+            reloadToken={statementReload}
+            onChanged={() => setDebtsReload((t) => t + 1)}
+          />
 
-            {upcoming.length > 0 && (
-              <AppCard style={styles.card}>
-                <View style={styles.sectionHeader}>
-                  <Ionicons name="calendar" size={20} color={colors.primary} />
-                  <Text style={styles.sectionTitle}>Gelecek Rezervasyonlar ({upcoming.length})</Text>
-                </View>
-                {upcoming.map((r) => (
-                  <View key={r.id} style={styles.rezRow}>
+          <AppCard style={styles.card}>
+            <View style={styles.sectionHeader}>
+              <Ionicons name="bed" size={20} color={colors.primary} />
+              <Text style={styles.sectionTitle}>Konaklamalar ({stays.length})</Text>
+            </View>
+            {detailLoading && reservations.length === 0 ? (
+              <Text style={styles.emptyText}>Yükleniyor...</Text>
+            ) : stays.length === 0 ? (
+              <Text style={styles.emptyText}>Konaklama yok</Text>
+            ) : (
+              stays.map((r) => (
+                <View key={r.id} style={styles.rezRow}>
+                  <View style={styles.rezTop}>
                     <Text style={styles.rezRoom}>Oda {r.roomNumber}</Text>
-                    <Text style={styles.rezMeta}>{formatDate(r.checkIn)} → {formatDate(r.checkOut)}{r.agencyReservationCode ? ` · Kod: ${r.agencyReservationCode}` : ''}</Text>
-                    {!!r.guestNames && <Text style={styles.rezMeta}>{r.guestNames}</Text>}
+                    <StatusChip label={RESERVATION_STATUS_LABELS[r.status] || r.status} color={RESERVATION_STATUS_COLORS[r.status] || colors.textSecondary} />
                   </View>
-                ))}
-              </AppCard>
+                  {!!r.guestNames && <Text style={styles.rezMeta}>{r.guestNames}</Text>}
+                  <Text style={styles.rezMeta}>{formatDate(r.checkIn)} → {formatDate(r.checkOut)}{r.agencyReservationCode ? ` · Kod: ${r.agencyReservationCode}` : ''}</Text>
+                  <Text style={styles.rezMeta}>
+                    {formatCurrency(Number(r.totalAmount))} · Ödenen / aktarılan {formatCurrency(Number(r.paidAmount))}
+                  </Text>
+                </View>
+              ))
             )}
-          </ScrollView>
-        )}
+          </AppCard>
+
+          {upcoming.length > 0 && (
+            <AppCard style={styles.card}>
+              <View style={styles.sectionHeader}>
+                <Ionicons name="calendar" size={20} color={colors.primary} />
+                <Text style={styles.sectionTitle}>Gelecek Rezervasyonlar ({upcoming.length})</Text>
+              </View>
+              {upcoming.map((r) => (
+                <View key={r.id} style={styles.rezRow}>
+                  <Text style={styles.rezRoom}>Oda {r.roomNumber}</Text>
+                  <Text style={styles.rezMeta}>{formatDate(r.checkIn)} → {formatDate(r.checkOut)}{r.agencyReservationCode ? ` · Kod: ${r.agencyReservationCode}` : ''}</Text>
+                  {!!r.guestNames && <Text style={styles.rezMeta}>{r.guestNames}</Text>}
+                </View>
+              ))}
+            </AppCard>
+          )}
+        </ScrollView>
 
         {renderForm()}
-        <PromptModal
-          visible={!!paymentTarget}
-          title="Ödeme Ekle"
-          message={paymentTarget ? `Oda ${paymentTarget.roomNumber} — Bakiye: ${formatCurrency(paymentTarget.balance)}` : undefined}
-          placeholder="Ödeme tutarı"
-          initialValue={paymentTarget ? String(paymentTarget.balance) : ''}
-          keyboardType="decimal-pad"
-          confirmText="Ödeme Yap"
-          validate={(v) => {
-            const amount = parseAmount(v);
-            if (amount <= 0) return 'Geçerli bir tutar girin';
-            if (paymentTarget && amount > paymentTarget.balance + 0.001) return 'Tutar bakiyeden büyük olamaz';
-            return null;
-          }}
-          onConfirm={submitPayment}
-          onClose={() => setPaymentTarget(null)}
-        />
       </View>
     );
   }
@@ -397,7 +341,7 @@ const AgencyScreen: React.FC<AgencyScreenProps> = ({ onClose }) => {
                 <View style={{ flex: 1 }}>
                   <Text style={styles.itemName}>{item.name}</Text>
                   <Text style={styles.itemMeta}>
-                    {item.reservationCount} konaklama · Ciro {formatCurrency(Number(item.totalAmount))}
+                    {item.openCount} açık borç{item.activeReservations > 0 ? ` · ${item.activeReservations} konaklayan` : ''}
                   </Text>
                 </View>
                 <Text style={styles.debtAmount}>{formatCurrency(Number(item.balance))}</Text>
@@ -464,13 +408,6 @@ const styles = StyleSheet.create({
   rezTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   rezRoom: { fontSize: fontSize.md, fontWeight: '700', color: colors.textPrimary },
   rezMeta: { fontSize: fontSize.xs, color: colors.textSecondary, marginTop: 2 },
-  rezBottom: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6, marginTop: 4 },
-  payBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingHorizontal: 10, paddingVertical: 5, borderRadius: borderRadius.md,
-    borderWidth: 1, borderColor: colors.primary, backgroundColor: colors.primary + '10',
-  },
-  payBtnText: { fontSize: fontSize.xs, fontWeight: '700', color: colors.primary },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   modalContainer: {
     backgroundColor: colors.background, borderTopLeftRadius: borderRadius.xl, borderTopRightRadius: borderRadius.xl, maxHeight: '92%',

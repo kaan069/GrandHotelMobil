@@ -2,11 +2,11 @@
  * FaultListScreen - Arıza Listesi Ekranı
  *
  * Teknik personel ve patron/müdür için arıza takibi.
- * Arızalar durumlarına göre listelenir.
+ * Arızalar durumlarına göre listelenir (filtre sunucuda, sonsuz kaydırma).
  * Teknik personel arıza çözüm fotoğrafı ekleyerek kapatabilir.
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -21,10 +21,10 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 
-import { AppCard, StatusChip, EmptyState } from '../../components/common';
+import { AppCard, StatusChip, EmptyState, LoadMoreFooter } from '../../components/common';
 import FaultDetailView from '../../components/tasks/FaultDetailView';
 import type { Fault } from '../../services/api';
-import useApi from '../../hooks/useApi';
+import usePagedList from '../../hooks/usePagedList';
 import { faultsApi } from '../../services/api';
 import { colors, spacing, fontSize, borderRadius } from '../../theme';
 import { FAULT_STATUS, FAULT_STATUS_LABELS, FAULT_STATUS_COLORS, FAULT_CATEGORIES } from '../../utils/constants';
@@ -39,8 +39,13 @@ interface FilterOption {
 }
 
 const FaultListScreen: React.FC<FaultListScreenProps> = ({ onClose }) => {
-  const { data: faults, loading, error, refetch } = useApi<Fault[]>(() => faultsApi.getAll());
   const [filter, setFilter] = useState('all');
+  /* Arızalar sayfa sayfa; durum filtresi sunucuda (eskiden tamamı çekilip süzülüyordu) */
+  const list = usePagedList(
+    (page, pageSize) => faultsApi.getPage({ page, pageSize, status: filter === 'all' ? undefined : filter }),
+    [filter],
+  );
+  const refetch = list.refresh;
   const [selectedFault, setSelectedFault] = useState<Fault | null>(null);
 
   /** Kategori adı */
@@ -104,12 +109,6 @@ const FaultListScreen: React.FC<FaultListScreenProps> = ({ onClose }) => {
     ]);
   };
 
-  /* Filtrelenmiş arızalar */
-  const allFaults = faults || [];
-  const filteredFaults = filter === 'all'
-    ? allFaults
-    : allFaults.filter((f) => f.status === filter);
-
   /** Filtre butonları */
   const FILTERS: FilterOption[] = [
     { value: 'all', label: 'Tümü' },
@@ -145,27 +144,30 @@ const FaultListScreen: React.FC<FaultListScreenProps> = ({ onClose }) => {
       </View>
 
       {/* Arıza listesi */}
-      {loading && !faults ? (
+      {list.loading && list.items.length === 0 ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={styles.loadingText}>Arızalar yükleniyor...</Text>
         </View>
-      ) : error ? (
+      ) : list.error && list.items.length === 0 ? (
         <View style={styles.loadingContainer}>
           <Ionicons name="alert-circle-outline" size={48} color={colors.error} />
-          <Text style={styles.errorText}>{error}</Text>
+          <Text style={styles.errorText}>{list.error}</Text>
           <TouchableOpacity onPress={refetch} style={styles.retryBtn}>
             <Text style={styles.retryText}>Tekrar Dene</Text>
           </TouchableOpacity>
         </View>
       ) : (
       <FlatList
-        data={filteredFaults}
+        data={list.items}
         keyExtractor={(item) => String(item.id)}
         contentContainerStyle={styles.list}
         refreshControl={
-          <RefreshControl refreshing={loading} onRefresh={refetch} colors={[colors.primary]} />
+          <RefreshControl refreshing={list.refreshing} onRefresh={refetch} colors={[colors.primary]} />
         }
+        onEndReached={list.loadMore}
+        onEndReachedThreshold={0.4}
+        ListFooterComponent={<LoadMoreFooter loading={list.loadingMore} />}
         ListEmptyComponent={
           <EmptyState icon="construct-outline" title="Arıza bulunamadı" />
         }

@@ -15,7 +15,7 @@
  * Check-in İptal, Rezervasyon İptal (web ReservationDetail ile aynı işlemler).
  */
 
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -28,7 +28,8 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
-import { AppCard, AppButton, AppInput, StatusChip, EmptyState, LoadingState } from '../../components/common';
+import { AppCard, AppButton, AppInput, StatusChip, EmptyState, LoadingState, LoadMoreFooter } from '../../components/common';
+import usePagedList from '../../hooks/usePagedList';
 import CalendarPicker from '../../components/common/CalendarPicker';
 import { colors, spacing, fontSize, borderRadius } from '../../theme';
 import {
@@ -105,9 +106,6 @@ const ReservationHistoryScreen: React.FC<ReservationHistoryScreenProps> = ({ onC
   const [debouncedSearch, setDebouncedSearch] = useState('');
 
   /* Veri state */
-  const [reservations, setReservations] = useState<Reservation[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
 
   /* Modal state */
   const [calendarTarget, setCalendarTarget] = useState<'dateFrom' | 'dateTo' | null>(null);
@@ -130,35 +128,21 @@ const ReservationHistoryScreen: React.FC<ReservationHistoryScreenProps> = ({ onC
     };
   }, [searchQuery]);
 
-  /* Veri çek — filtre değiştiğinde */
-  const fetchReservations = useCallback(async () => {
-    setLoading(true);
-    try {
-      const params: Parameters<typeof reservationsApi.getAll>[0] = {};
-      if (presetFilter !== 'all') params.filter = presetFilter;
-      if (statusFilter !== 'all') params.status = statusFilter;
-      if (dateFrom) params.dateFrom = dateFrom;
-      if (dateTo) params.dateTo = dateTo;
-      if (debouncedSearch) params.search = debouncedSearch;
-
-      const data = await reservationsApi.getAll(params);
-      setReservations(data || []);
-    } catch {
-      setReservations([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [presetFilter, statusFilter, dateFrom, dateTo, debouncedSearch]);
-
-  useEffect(() => {
-    fetchReservations();
-  }, [fetchReservations]);
-
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    await fetchReservations();
-    setRefreshing(false);
-  }, [fetchReservations]);
+  /* Veri çek — sayfa sayfa (sonsuz kaydırma); filtre / arama değişince baştan */
+  const list = usePagedList(
+    (page, pageSize) => reservationsApi.getPage({
+      page,
+      pageSize,
+      filter: presetFilter !== 'all' ? presetFilter : undefined,
+      status: statusFilter !== 'all' ? statusFilter : undefined,
+      dateFrom: dateFrom || undefined,
+      dateTo: dateTo || undefined,
+      search: debouncedSearch || undefined,
+    }),
+    [presetFilter, statusFilter, dateFrom, dateTo, debouncedSearch],
+  );
+  const reservations: Reservation[] = list.items;
+  const fetchReservations = list.refresh;
 
   /* Detay yükle */
   const handleSelectReservation = async (reservation: Reservation) => {
@@ -557,15 +541,18 @@ const ReservationHistoryScreen: React.FC<ReservationHistoryScreenProps> = ({ onC
       </View>
 
       {/* Liste */}
-      {loading && reservations.length === 0 ? (
+      {list.loading && reservations.length === 0 ? (
         <LoadingState message="Rezervasyonlar yükleniyor..." />
       ) : (
         <FlatList
           data={reservations}
           keyExtractor={(item) => item.id.toString()}
           contentContainerStyle={styles.list}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[colors.primary]} />}
-          ListEmptyComponent={<EmptyState icon="time-outline" title="Rezervasyon bulunamadı" />}
+          refreshControl={<RefreshControl refreshing={list.refreshing} onRefresh={list.refresh} colors={[colors.primary]} />}
+          onEndReached={list.loadMore}
+          onEndReachedThreshold={0.4}
+          ListFooterComponent={<LoadMoreFooter loading={list.loadingMore} />}
+          ListEmptyComponent={<EmptyState icon="time-outline" title={list.error || 'Rezervasyon bulunamadı'} />}
           renderItem={({ item }) => {
             const payStatus = computePaymentStatus(item.totalAmount, item.paidAmount);
             const canCancel = item.status === RESERVATION_STATUS.RESERVED;

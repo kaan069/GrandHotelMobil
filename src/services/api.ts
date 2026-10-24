@@ -44,6 +44,31 @@ type Schemas = components['schemas'];
 /** Arıza kaydı — backend FaultSerializer'dan üretilir (web ile aynı tip) */
 export type Fault = Schemas['Fault'];
 
+/** Sayfalı liste yanıtı (backend config/pagination.py — ?page= ile; hooks/usePagedList) */
+export interface Paginated<T> {
+  count: number;
+  next: string | null;
+  previous: string | null;
+  results: T[];
+}
+
+/** Sayfalı sorgu (page 1'den başlar) */
+export interface PageQuery {
+  page: number;
+  pageSize: number;
+  search?: string;
+}
+
+/** Boş / tanımsız alanları atlayarak "?a=1&b=x" üretir */
+const toQuery = (params: object): string => {
+  const qs = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') qs.append(key, String(value));
+  });
+  const str = qs.toString();
+  return str ? `?${str}` : '';
+};
+
 /* ==================== BASE CLIENT ==================== */
 
 /**
@@ -309,8 +334,11 @@ export const roomsApi = {
     }),
 
   /** Son 24 saatteki check-out'u geri al — oda tekrar dolu olur */
+  /** Check-out geri al — kbsResendRequired: KBS'ye çıkış bildirilmişti, giriş tekrar gönderilmeli */
   revertCheckout: (roomId: number) =>
-    apiClient<ApiRoom>(`/rooms/${roomId}/revert_checkout/`, { method: 'POST' }),
+    apiClient<ApiRoom & { kbsResendRequired: boolean; removedItems: string[] }>(
+      `/rooms/${roomId}/revert_checkout/`, { method: 'POST' },
+    ),
 
   /** Oda taşıma — rezervasyon, misafirler ve folio hedef odaya geçer */
   moveGuests: (fromRoomId: number, toRoomId: number) =>
@@ -399,6 +427,10 @@ export const guestsApi = {
   getAll: () =>
     apiClient<Guest[]>('/guests/'),
 
+  /** Sayfalı misafir listesi — search: ad / soyad / TC / pasaport / telefon (her kelime) */
+  getPage: (query: PageQuery & { isBlocked?: boolean }) =>
+    apiClient<Paginated<Guest>>(`/guests/${toQuery(query)}`),
+
   /** Misafir ara (ad, soyad, TC, telefon) */
   search: (q: string) =>
     apiClient<Guest[]>(`/guests/search/?q=${encodeURIComponent(q)}`),
@@ -436,32 +468,73 @@ export const guestsApi = {
 export type Agency = Schemas['Agency'];
 export type AgencyInput = Schemas['AgencyRequest'];
 
-export interface AgencyDebtor {
+/**
+ * Firma / acente borçlular satırı — cari bakiyesi > 0 olanlar (backend accounting/party.py).
+ * Borç tek kaynaktan (cari defter) hesaplanır; web CariDebtorRow ile aynı.
+ */
+export interface CariDebtorRow {
   id: number;
   name: string;
   taxNumber: string | null;
   phone: string | null;
   email: string | null;
-  commissionRate: string;
-  totalAmount: string;
-  paidAmount: string;
+  address?: string | null;
+  contactPerson?: string | null;
+  commissionRate?: string;
+  /** Cari bakiye (Σ borç − Σ alacak) */
   balance: string;
-  reservationCount: number;
+  openDebit: string;
+  unallocatedCredit: string;
+  openCount: number;
+  /** Konaklayan (check-in'li) rezervasyonların açık folio bakiyesi — henüz cariye aktarılmadı */
+  inHouseBalance: string;
   activeReservations: number;
 }
 
-export interface AgencyDebtDetail {
-  agency: {
+/** Cari ekstre satırı: hareket + yürüyen bakiye */
+export interface CariStatementRow extends ApiAccountTransaction {
+  runningBalance: string;
+}
+
+/** Konaklayan (henüz cariye aktarılmamış) rezervasyon */
+export interface CariInHouseRow {
+  id: number;
+  roomNumber: string;
+  guestNames: string;
+  checkIn: string | null;
+  checkOut: string | null;
+  balance: string;
+}
+
+/** GET /companies|agencies/{id}/debt_detail/ — cari ekstre */
+export interface CariDebtDetail {
+  party: {
     id: number; name: string; taxNumber: string | null; phone: string | null; email: string | null;
-    address: string | null; contactPerson: string | null; commissionRate: string;
+    address: string | null; contactPerson?: string | null; commissionRate?: string;
   };
-  summary: { totalAmount: string; paidAmount: string; balance: string; commission: string; reservationCount: number };
-  reservations: {
-    id: number; roomNumber: string; guestNames: string;
-    checkIn: string | null; checkOut: string | null;
-    totalAmount: string; paidAmount: string; balance: string;
-    isActive: boolean; status: string; agencyReservationCode: string;
-  }[];
+  summary: {
+    debitTotal: string;
+    creditTotal: string;
+    balance: string;
+    openDebit: string;
+    unallocatedCredit: string;
+    count: number;
+    inHouseBalance: string;
+    /** Sadece acente: gerçekleşmiş konaklama cirosu ve komisyon */
+    revenue?: string;
+    commission?: string;
+  };
+  /** En yeni üstte */
+  transactions: CariStatementRow[];
+  inHouse: CariInHouseRow[];
+}
+
+/** Cari tahsilat gövdesi — yöntem zorunlu; reservationId verilirse önce o borç kapanır */
+export interface CariPaymentInput {
+  amount: number;
+  paymentMethod: string;
+  description?: string;
+  reservationId?: number;
 }
 
 /** /agencies/{id}/reservations/ satırı (iptal edilenler hariç) */
@@ -480,9 +553,9 @@ export const agenciesApi = {
   update: (id: number, data: Partial<AgencyInput>) =>
     apiClient<Agency>(`/agencies/${id}/`, { method: 'PATCH', body: JSON.stringify(data) }),
   delete: (id: number) => apiClient(`/agencies/${id}/`, { method: 'DELETE' }),
-  getDebtors: () => apiClient<AgencyDebtor[]>('/agencies/debtors/'),
-  getDebtDetail: (id: number) => apiClient<AgencyDebtDetail>(`/agencies/${id}/debt_detail/`),
-  addPayment: (agencyId: number, data: { reservationId: number; amount: number; description?: string; staffName?: string }) =>
+  getDebtors: () => apiClient<CariDebtorRow[]>('/agencies/debtors/'),
+  getDebtDetail: (id: number) => apiClient<CariDebtDetail>(`/agencies/${id}/debt_detail/`),
+  addPayment: (agencyId: number, data: CariPaymentInput) =>
     apiClient<{ success: boolean; balance: string }>(`/agencies/${agencyId}/add_payment/`, {
       method: 'POST',
       body: JSON.stringify(data),
@@ -518,17 +591,17 @@ export const companiesApi = {
   getGuests: (id: number) =>
     apiClient<Guest[]>(`/companies/${id}/guests/`),
 
-  /** Borçlu firmalar listesi */
+  /** Borçlu firmalar (cari bakiyesi > 0) */
   getDebtors: () =>
-    apiClient<any[]>('/companies/debtors/'),
+    apiClient<CariDebtorRow[]>('/companies/debtors/'),
 
-  /** Firma borç detayı */
+  /** Firma cari ekstresi */
   getDebtDetail: (id: number) =>
-    apiClient<any>(`/companies/${id}/debt_detail/`),
+    apiClient<CariDebtDetail>(`/companies/${id}/debt_detail/`),
 
-  /** Firmaya ödeme ekle (borç kapat) */
-  addPayment: (companyId: number, data: { reservationId: number; amount: number; description?: string; staffName?: string }) =>
-    apiClient<any>(`/companies/${companyId}/add_payment/`, {
+  /** Firmadan tahsilat (en eski açık borçtan başlayarak kapatır, fazlası avans) */
+  addPayment: (companyId: number, data: CariPaymentInput) =>
+    apiClient<{ success: boolean; balance: string }>(`/companies/${companyId}/add_payment/`, {
       method: 'POST',
       body: JSON.stringify(data),
     }),
@@ -551,12 +624,70 @@ export interface ApiAccountTransaction {
   sourceFolioItemId: number | null;
   settledByFolioId: number | null;
   settledAt: string | null;
+  /** Borçta tahsil edilen, alacakta borçlara dağıtılan kısım */
+  settledAmount: string;
+  /** amount − settledAmount (borçta kalan borç, alacakta kullanılmamış avans) */
+  remaining: string;
+  /** Tahsilat kayıtlarında: cash | card | transfer | other */
+  paymentMethod: string;
   createdAt: string;
   createdBy: string;
   guestName: string;
   roomNumber: string;
   reservationCheckIn: string | null;
   reservationCheckOut: string | null;
+}
+
+export type CariTargetType = 'company' | 'agency' | 'guest';
+
+/** Borçlular listesi satırı — kişi / firma / acente başına tek satır (backend ledger.debtor_rows) */
+export interface CariDebtorPartyRow {
+  targetType: CariTargetType;
+  id: number;
+  name: string;
+  phone: string;
+  taxNumber: string;
+  balance: string;
+  openDebit: string;
+  unallocatedCredit: string;
+  /** Açık borç kutucuğu (konaklama) sayısı */
+  openCount: number;
+  oldestOpenAt: string | null;
+}
+
+export interface CariDebtorsResponse {
+  summary: { count: number; totalBalance: string; totalOpenDebit: string; openCount: number };
+  items: CariDebtorPartyRow[];
+}
+
+/** Borç kutucuğu — bir konaklamanın açık borcu (backend ledger.open_debts; web ile aynı) */
+export interface CariDebtCard {
+  key: string;
+  reservationId: number | null;
+  roomNumber: string;
+  guestNames: string;
+  checkIn: string | null;
+  checkOut: string | null;
+  nights: number;
+  amount: string;
+  settled: string;
+  remaining: string;
+  debitIds: number[];
+  descriptions: string[];
+  firstDebitAt: string;
+  /** Bu borca yapılmış tahsilatlar (kısmi ödemeler) */
+  payments: { date: string; amount: string; paymentMethod: string; description: string; isTransfer: boolean }[];
+  folio: {
+    items: { id: number; date: string | null; category: string; description: string; amount: string; paymentMethod: string }[];
+    /** Kategori → toplam (room_charge, minibar, discount, payment, account_transfer_debit …) */
+    byCategory: Record<string, string>;
+  } | null;
+}
+
+export interface CariOpenDebtsResponse {
+  party: { targetType: CariTargetType; id: number; name: string; phone: string; taxNumber: string };
+  summary: { balance: string; openDebit: string; unallocatedCredit: string; count: number };
+  debts: CariDebtCard[];
 }
 
 export interface AccountTransactionDebtorListResponse {
@@ -586,14 +717,39 @@ export const accountTransactionsApi = {
     return apiClient<ApiAccountTransaction[]>(`/account-transactions/${qs ? '?' + qs : ''}`);
   },
 
-  /** Cari hareketi ödeme ile kapat */
-  settle: (id: number, data: { amount?: number; description?: string; staffName?: string }) =>
-    apiClient<{ success: boolean; transactionId: number; status: string; folioItemId: number | null }>(
+  /** Belirli borca tahsilat (kısmi olabilir; fazlası diğer borçlara / avansa). Folioya yazılmaz. */
+  settle: (id: number, data: { amount?: number; paymentMethod: string; description?: string }) =>
+    apiClient<{ success: boolean; transactionId: number; status: string; remaining: string; balance: string }>(
       `/account-transactions/${id}/settle/`,
       {
         method: 'POST',
         body: JSON.stringify(data),
       },
+    ),
+
+  /** Borçlu listesi (kişi başı tek satır) — targetType: guest | company_or_agency */
+  getDebtors: (targetType?: 'guest' | 'company_or_agency') =>
+    apiClient<CariDebtorsResponse>(`/account-transactions/debtors/${toQuery({ targetType })}`),
+
+  /** Bir borçlunun açık borç kutucukları (konaklama başına) */
+  getOpenDebts: (target: { company?: number; agency?: number; guest?: number }) =>
+    apiClient<CariOpenDebtsResponse>(`/account-transactions/open_debts/${toQuery(target)}`),
+
+  /**
+   * Cariye tahsilat (firma / acente / misafir). debitIds (borç kutucuklarından seçilenler) verilirse
+   * önce onlar kapanır ve tutar onların kalanını aşamaz; yoksa en eski borçlardan, fazlası avans.
+   */
+  collect: (data: CariPaymentInput & { companyId?: number; agencyId?: number; guestId?: number; debitIds?: number[] }) =>
+    apiClient<{ success: boolean; transaction: ApiAccountTransaction; balance: string }>(
+      '/account-transactions/collect/',
+      { method: 'POST', body: JSON.stringify(data) },
+    ),
+
+  /** Tahsilat iptali (muhasebe / yönetim) — kapattığı borçlar tekrar açılır */
+  cancelPayment: (id: number) =>
+    apiClient<{ success: boolean; balance: string }>(
+      `/account-transactions/${id}/cancel_payment/`,
+      { method: 'POST' },
     ),
 };
 
@@ -623,6 +779,10 @@ export const reservationsApi = {
     const qs = params.toString();
     return apiClient<Reservation[]>(`/reservations/${qs ? '?' + qs : ''}`);
   },
+
+  /** Sayfalı rezervasyon listesi (geçmiş ekranı) — search: misafir adı / oda no */
+  getPage: (query: PageQuery & { filter?: string; status?: string; dateFrom?: string; dateTo?: string }) =>
+    apiClient<Paginated<Reservation>>(`/reservations/${toQuery(query)}`),
 
   /** Tek rezervasyon detayı */
   getById: (id: number) =>
@@ -692,6 +852,8 @@ export const foliosApi = {
     amount: number;
     date: string;
     createdBy?: string;
+    /** Ödeme kaleminde zorunlu: cash | card | transfer | other */
+    paymentMethod?: string;
   }) =>
     apiClient<ApiFolioItem>('/folios/', {
       method: 'POST',
@@ -1138,6 +1300,10 @@ export const faultsApi = {
     return apiClient<Fault[]>(`/faults/${qs ? '?' + qs : ''}`);
   },
 
+  /** Sayfalı arıza listesi — status: virgülle birden fazla ("open,in_progress") */
+  getPage: (query: PageQuery & { status?: string }) =>
+    apiClient<Paginated<Fault>>(`/faults/${toQuery(query)}`),
+
   /** Tekil arıza detayı */
   getById: (id: number) =>
     apiClient<Fault>(`/faults/${id}/`),
@@ -1439,6 +1605,17 @@ export const commissionApi = {
 
 export type ApiShiftHandover = Omit<Schemas['ShiftHandover'], 'endTime'> & { endTime: string | null };
 
+/** Aktif mesaide şu ana kadarki özet (kapanışta kaydedilecek değerler) — backend shift_summary */
+export interface ShiftLiveSummary {
+  totalSales: string;
+  cashSales: string;
+  cardSales: string;
+  otherSales: string;
+  roomsSold: number;
+  roomsOccupied: number;
+  roomsAvailable: number;
+}
+
 export const shiftsApi = {
   getAll: (params?: { status?: string; date?: string }) => {
     const qs = new URLSearchParams();
@@ -1447,13 +1624,17 @@ export const shiftsApi = {
     const q = qs.toString();
     return apiClient<ApiShiftHandover[]>(`/shifts/${q ? '?' + q : ''}`);
   },
-  getActive: () => apiClient<ApiShiftHandover | null>('/shifts/active/'),
+  getActive: () => apiClient<(ApiShiftHandover & { live?: ShiftLiveSummary }) | null>('/shifts/active/'),
+  /** Sayfalı mesai geçmişi (en yeni önce) */
+  getPage: (query: PageQuery & { status?: string }) =>
+    apiClient<Paginated<ApiShiftHandover>>(`/shifts/${toQuery(query)}`),
   create: (data: { toEmployeeId: number; notes?: string }) =>
     apiClient<{ shift: ApiShiftHandover; closedShift: ApiShiftHandover | null }>('/shifts/', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
-  close: (id: number, data: { cardSales?: number; cashSales?: number; notes?: string }) =>
+  /** Mesai kapat — kart / nakit / diğer tahsilat backend'de mesaideki ödemelerden hesaplanır */
+  close: (id: number, data: { notes?: string }) =>
     apiClient<ApiShiftHandover>(`/shifts/${id}/close/`, { method: 'POST', body: JSON.stringify(data) }),
 };
 
@@ -1522,6 +1703,9 @@ export const accountingApi = {
     const qs = params.toString();
     return apiClient<ApiExpense[]>(`/accounting/expenses/${qs ? '?' + qs : ''}`);
   },
+  /** Sayfalı gider listesi */
+  listExpensesPage: (query: PageQuery & { category?: string; dateFrom?: string; dateTo?: string }) =>
+    apiClient<Paginated<ApiExpense>>(`/accounting/expenses/${toQuery(query)}`),
   createExpense: (payload: ExpensePayload) =>
     apiClient<ApiExpense>('/accounting/expenses/', { method: 'POST', body: JSON.stringify(payload) }),
   deleteExpense: (id: number) =>
@@ -1712,6 +1896,10 @@ export const invoicesApi = {
     const qs = params.toString();
     return apiClient<ApiInvoice[]>(`/invoices/${qs ? '?' + qs : ''}`);
   },
+
+  /** Sayfalı fatura listesi — search: fatura no / müşteri / VKN-TCKN */
+  listPage: (query: PageQuery & { type?: string; status?: string; dateFrom?: string; dateTo?: string }) =>
+    apiClient<Paginated<ApiInvoice>>(`/invoices/${toQuery(query)}`),
 
   /** Sadece taslak / hatalı fatura iptal edilir — resmîleşmiş belge Paraşüt'ten iptal edilir */
   cancel: (id: number) =>

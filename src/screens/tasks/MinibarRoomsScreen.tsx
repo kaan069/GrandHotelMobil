@@ -50,13 +50,13 @@ const MinibarRoomsScreen: React.FC<Props> = ({ onClose }) => {
       const allRooms = await roomsApi.getAll();
       // Sadece dolu ve çıkış yapılacak odalar
       const occupiedRooms = allRooms
-        .filter((r: Record<string, unknown>) => r.status === 'occupied' || r.status === 'dirty')
-        .map((r: Record<string, unknown>) => ({
-          id: r.id as number,
-          roomNumber: r.roomNumber as string,
-          status: r.status as string,
-          guestName: r.guestName as string | null,
-          floor: r.floor as number,
+        .filter((r) => r.status === 'occupied' || r.status === 'dirty')
+        .map((r) => ({
+          id: r.id,
+          roomNumber: r.roomNumber,
+          status: r.status,
+          guestName: r.guestName,
+          floor: r.floor,
         }));
 
       // Her oda için minibar ürün sayısını al

@@ -17,7 +17,6 @@ import {
   StyleSheet,
   FlatList,
   TouchableOpacity,
-  Modal,
   ScrollView,
   Alert,
   RefreshControl,
@@ -69,12 +68,12 @@ const RoomServiceScreen: React.FC<Props> = ({ onClose }) => {
     try {
       const all = await roomsApi.getAll();
       const occupied = all
-        .filter((r: Record<string, unknown>) => r.status === 'occupied')
-        .map((r: Record<string, unknown>) => ({
-          id: r.id as number,
-          roomNumber: r.roomNumber as string,
-          guestName: r.guestName as string | null,
-          floor: r.floor as number,
+        .filter((r) => r.status === 'occupied')
+        .map((r) => ({
+          id: r.id,
+          roomNumber: r.roomNumber,
+          guestName: r.guestName,
+          floor: r.floor,
         }));
       setRooms(occupied);
     } catch {

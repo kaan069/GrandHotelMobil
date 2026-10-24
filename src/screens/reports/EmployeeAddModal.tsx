@@ -20,7 +20,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
-import { AppButton, AppInput, AppCard } from '../../components/common';
+import { AppButton, AppInput } from '../../components/common';
 import { colors, spacing, fontSize, borderRadius } from '../../theme';
 import { ROLES, ROLE_LABELS } from '../../utils/constants';
 import type { ApiEmployee } from '../../services/api';

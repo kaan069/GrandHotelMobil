@@ -50,6 +50,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/account-transactions/{id}/cancel_payment/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description POST /api/account-transactions/{id}/cancel_payment/
+         *     Tahsilatı (alacak) iptal eder: kapattığı borçlar tekrar açılır. Folio aktarımından
+         *     doğan alacaklar buradan değil, folio kalemi silinerek kaldırılır.
+         */
+        post: operations["account_transactions_cancel_payment_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/account-transactions/{id}/settle/": {
         parameters: {
             query?: never;
@@ -61,14 +82,38 @@ export interface paths {
         put?: never;
         /**
          * @description POST /api/account-transactions/{id}/settle/
-         *     Body: { "amount": 500, "description": "Nakit ödeme", "staffName": "Ayşe" }
+         *     Body: { "amount": 500, "paymentMethod": "cash", "description": "Nakit ödeme" }
          *
-         *     AccountTransaction'ı ödeme ile kapatır:
-         *         1. Source reservation'a payment kategorili FolioItem ekler
-         *         2. Reservation.paid_amount += amount
-         *         3. AccountTransaction.status = 'settled', settled_at = now, settled_by_folio = FK
+         *     Belirli bir borca tahsilat: önce bu borç kapatılır (kısmi ödeme borcu açık bırakır),
+         *     artan tutar diğer açık borçlara / avansa gider. Rezervasyon foliosuna yazılmaz.
          */
         post: operations["account_transactions_settle_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/account-transactions/collect/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description POST /api/account-transactions/collect/
+         *     Body: { "companyId" | "agencyId" | "guestId": 5, "amount": 1500,
+         *             "paymentMethod": "cash|card|transfer|other", "description": "...",
+         *             "debitIds": [12, 15] (opsiyonel — borç kutucuklarından seçilenler) }
+         *
+         *     Cariye tahsilat (alacak) yazar. debitIds verilirse önce o borçlar (en eskiden) kapanır ve
+         *     tutar seçili borçların kalanını aşamaz; verilmezse en eski açık borçlardan başlanır,
+         *     borçtan fazlası avans olarak kalır ve sonraki borçlardan otomatik düşülür.
+         */
+        post: operations["account_transactions_collect_create"];
         delete?: never;
         options?: never;
         head?: never;
@@ -85,10 +130,54 @@ export interface paths {
         /**
          * @description GET /api/account-transactions/debtor_list/
          *
-         *     Açık tüm cari hareketleri döner (debit + credit birlikte).
-         *     Frontend DataGrid'de debit=+ credit=− olarak gösterilir.
+         *     Açık (tamamen kapanmamış) tüm cari hareketleri döner (borç + kullanılmamış alacak).
+         *     Tutarlar kalan tutar üzerinden toplanır (kısmi tahsilatlar düşülmüş).
          */
         get: operations["account_transactions_debtor_list_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/account-transactions/debtors/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description GET /api/account-transactions/debtors/?targetType=guest|company_or_agency
+         *
+         *     Borçlu listesi: cari bakiyesi > 0 olan firma / acente / şahıslar, kişi başı tek satır
+         *     (açık borç sayısı, en eski borç tarihi, avans). Satır → open_debts kutucukları.
+         */
+        get: operations["account_transactions_debtors_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/account-transactions/open_debts/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description GET /api/account-transactions/open_debts/?company=5 | ?agency=3 | ?guest=9
+         *
+         *     Borçlunun açık borçları konaklama başına kutucuk olarak (oda, tarih, folio dökümü,
+         *     kısmi tahsilatlar). Kutucuklardan seçilenler collect(debitIds) ile kapatılır.
+         */
+        get: operations["account_transactions_open_debts_retrieve"];
         put?: never;
         post?: never;
         delete?: never;
@@ -287,11 +376,10 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * @description POST /api/agencies/{id}/add_payment/
-         *     Body: { "reservationId": 1, "amount": 5000, "description": "...", "staffName": "..." }
-         *
-         *     İş kuralı: FolioItem(category=payment) oluştur + Reservation.paid_amount güncelle.
-         *     transaction.atomic: ikisi birlikte başarılı olur ya da birlikte geri alınır.
+         * @description Tahsilat: Body { "amount": 5000, "paymentMethod": "cash|card|transfer|other",
+         *                      "description": "...", "reservationId": 12 (opsiyonel) }
+         *     En eski açık borçtan başlayarak kapatır; reservationId verilirse önce o
+         *     rezervasyondan doğan borç kapatılır. Fazlası avans olarak kalır.
          */
         post: operations["agencies_add_payment_create"];
         delete?: never;
@@ -307,10 +395,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /**
-         * @description GET /api/agencies/{id}/debt_detail/
-         *     Acentenin tüm rezervasyonları + folio kalemleri + komisyon özeti.
-         */
+        /** @description Cari ekstre: tüm hareketler (en yeni üstte, yürüyen bakiye ile) + konaklayan açık hesaplar. */
         get: operations["agencies_debt_detail_retrieve"];
         put?: never;
         post?: never;
@@ -348,10 +433,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /**
-         * @description GET /api/agencies/debtors/
-         *     Bakiyesi > 0 olan (borçlu) acenteleri döner.
-         */
+        /** @description Cari bakiyesi > 0 olan firmalar / acenteler (en çok borçlu üstte). */
         get: operations["agencies_debtors_retrieve"];
         put?: never;
         post?: never;
@@ -992,17 +1074,10 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * @description POST /api/companies/{id}/add_payment/
-         *     Body: { "reservationId": 1, "amount": 5000, "description": "Nakit ödeme", "staffName": "Ayşe" }
-         *
-         *     İş kuralı:
-         *         1. Firmaya ait reservation'ı doğrula
-         *         2. 'payment' kategorisinde FolioItem oluştur (ödeme kaydı)
-         *         3. Reservation.paid_amount'ı güncelle
-         *
-         *     transaction.atomic: FolioItem oluşturma + paid_amount güncelleme
-         *     ya ikisi birden başarılı olur, ya ikisi de geri alınır.
-         *     Böylece yarım kalmış ödeme kaydı oluşmaz.
+         * @description Tahsilat: Body { "amount": 5000, "paymentMethod": "cash|card|transfer|other",
+         *                      "description": "...", "reservationId": 12 (opsiyonel) }
+         *     En eski açık borçtan başlayarak kapatır; reservationId verilirse önce o
+         *     rezervasyondan doğan borç kapatılır. Fazlası avans olarak kalır.
          */
         post: operations["companies_add_payment_create"];
         delete?: never;
@@ -1018,12 +1093,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /**
-         * @description GET /api/companies/{id}/debt_detail/
-         *
-         *     Firmaya ait tüm rezervasyonları, misafir bilgileri ve folio kalemleri ile döner.
-         *     Borç özeti (summary) ve rezervasyon bazında detay içerir.
-         */
+        /** @description Cari ekstre: tüm hareketler (en yeni üstte, yürüyen bakiye ile) + konaklayan açık hesaplar. */
         get: operations["companies_debt_detail_retrieve"];
         put?: never;
         post?: never;
@@ -1061,20 +1131,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /**
-         * @description GET /api/companies/debtors/
-         *
-         *     Bakiyesi > 0 olan (borçlu) firmaları döner. En çok borçlu en üstte.
-         *
-         *     Hesaplama mantığı:
-         *         Her firmanın tüm Reservation'larının total_amount ve paid_amount toplamı alınır.
-         *         Fark (balance) > 0 ise firma borçlu demektir.
-         *
-         *     SQL performansı:
-         *         annotate() → DB seviyesinde hesaplama yapar, Python'a tek tek çekmez.
-         *         Coalesce() → Sum() None dönerse 0'a çevirir (hiç reservation yoksa).
-         *         F() → DB seviyesinde alan referansı (total_amount - paid_amount SQL'de yapılır).
-         */
+        /** @description Cari bakiyesi > 0 olan firmalar / acenteler (en çok borçlu üstte). */
         get: operations["companies_debtors_retrieve"];
         put?: never;
         post?: never;
@@ -3351,8 +3408,7 @@ export interface paths {
          *         "checkIn": "2026-03-22",
          *         "checkOut": "2026-03-27",
          *         "notes": "VIP misafir",
-         *         "companyId": 1,
-         *         "totalAmount": 5000
+         *         "companyId": 1
          *     }
          *
          *     'reserved' ve 'checked_in' durumundaki rezervasyonlar güncellenebilir.
@@ -3894,8 +3950,14 @@ export interface paths {
         /**
          * @description POST /api/rooms/{id}/revert_checkout/
          *
-         *     Son 24 saatte checkout olmuş rezervasyonu geri alır.
-         *     Oda tekrar occupied olur, misafirler geri eklenir.
+         *     Son 24 saatte yapılan check-out'u geri alır:
+         *       - Check-out'un yazdığı folio kalemleri (origin='checkout': kapanış oda ücreti,
+         *         firma/acente/misafir cariye aktarımı) ve cari defterdeki karşılıkları silinir
+         *       - Çıkışta kapanan misafirler (aynı çıkış anı) ve rezervasyon tekrar açılır,
+         *         planlanan çıkış tarihi geri yüklenir; oda tekrar dolu olur
+         *     Engeller: odada yeni aktif rezervasyon var / aktarılan borca tahsilat yapılmış.
+         *     KBS çıkış bildirimi gönderildiyse geri alınamaz → yanıtta kbsResendRequired=true
+         *     döner; KBS'ye tekrar giriş bildirimi yapılmalı.
          */
         post: operations["rooms_revert_checkout_create"];
         delete?: never;
@@ -4082,9 +4144,10 @@ export interface paths {
         put?: never;
         /**
          * @description POST /api/shifts/{id}/close/
-         *     Body: { "cardSales": 5000, "cashSales": 3000, "notes": "..." }
+         *     Body: { "notes": "..." }
          *
-         *     Mesaiyi kapatır, snapshot alır.
+         *     Mesaiyi kapatır ve özetini kaydeder. Kart / nakit / diğer tahsilat elle girilmez:
+         *     mesai süresince alınan folio ödemeleri ve cari tahsilatlarından hesaplanır.
          */
         post: operations["shifts_close_create"];
         delete?: never;
@@ -5211,6 +5274,11 @@ export interface components {
             readonly settledByFolioId: number;
             /** Format: date-time */
             readonly settledAt: string;
+            /** Format: decimal */
+            readonly settledAmount: string;
+            /** Format: decimal */
+            readonly remaining: string;
+            readonly paymentMethod: string;
             /** Format: date-time */
             readonly createdAt: string;
             createdBy?: string;
@@ -5275,6 +5343,7 @@ export interface components {
             /** Notlar */
             notes?: string | null;
             isActive?: boolean;
+            /** @description Cari bakiye = Σ borç − Σ alacak (kısmi tahsilatlar dahil; apps/accounting/ledger.py). */
             readonly accountBalance: string;
         };
         AgencyRequest: {
@@ -5335,6 +5404,8 @@ export interface components {
             description?: string;
             performedBy?: string;
         };
+        /** @enum {unknown} */
+        BlankEnum: "";
         BmsAlert: {
             readonly id: number;
             device: number;
@@ -5512,6 +5583,7 @@ export interface components {
             email?: (string) | null;
             /** Format: decimal */
             agreedRate?: string | null;
+            /** @description Cari bakiye = Σ borç − Σ alacak (kısmi tahsilatlar dahil; apps/accounting/ledger.py). */
             readonly accountBalance: string;
         };
         /**
@@ -5854,10 +5926,13 @@ export interface components {
          * @description Hesap kalemi CRUD. reservationId ile doğrudan rezervasyona bağlanır.
          *
          *     Özel davranış — create():
-         *         - category='payment' veya 'account_transfer_*' ise Reservation.paid_amount += amount
-         *         - category='account_transfer_debit'/'credit' ise AccountTransaction otomatik yaratılır
-         *           (hedef: rez.company → rez.agency → primary guest sırasıyla)
+         *         - category='payment' → paymentMethod zorunlu (nakit / kart / havale / diğer);
+         *           mesai ve kasa özetleri ödemeleri yönteme göre buradan otomatik toplar.
+         *         - category='account_transfer_debit'/'credit' → cari deftere borç / alacak yazılır
+         *           (apps/accounting/ledger.py; hedef: rez.company → rez.agency → ilk misafir).
+         *         - Her mutasyondan sonra Reservation.refresh_totals() — tek doğruluk kaynağı.
          *         - Hepsi transaction.atomic içinde; biri başarısız olursa tümü geri alınır.
+         *     Cari aktarım kalemleri düzenlenemez (defterle tutarsızlık olmasın): silinip yeniden eklenir.
          */
         FolioItem: {
             readonly id: number;
@@ -5877,6 +5952,8 @@ export interface components {
              * Format: date
              */
             date: string;
+            paymentMethod?: components["schemas"]["PaymentMethodEnum"] | components["schemas"]["BlankEnum"];
+            readonly origin: string;
             createdBy?: string | null;
             /** Format: date-time */
             readonly createdAt: string;
@@ -5897,10 +5974,13 @@ export interface components {
          * @description Hesap kalemi CRUD. reservationId ile doğrudan rezervasyona bağlanır.
          *
          *     Özel davranış — create():
-         *         - category='payment' veya 'account_transfer_*' ise Reservation.paid_amount += amount
-         *         - category='account_transfer_debit'/'credit' ise AccountTransaction otomatik yaratılır
-         *           (hedef: rez.company → rez.agency → primary guest sırasıyla)
+         *         - category='payment' → paymentMethod zorunlu (nakit / kart / havale / diğer);
+         *           mesai ve kasa özetleri ödemeleri yönteme göre buradan otomatik toplar.
+         *         - category='account_transfer_debit'/'credit' → cari deftere borç / alacak yazılır
+         *           (apps/accounting/ledger.py; hedef: rez.company → rez.agency → ilk misafir).
+         *         - Her mutasyondan sonra Reservation.refresh_totals() — tek doğruluk kaynağı.
          *         - Hepsi transaction.atomic içinde; biri başarısız olursa tümü geri alınır.
+         *     Cari aktarım kalemleri düzenlenemez (defterle tutarsızlık olmasın): silinip yeniden eklenir.
          */
         FolioItemRequest: {
             reservationId: number;
@@ -5919,6 +5999,7 @@ export interface components {
              * Format: date
              */
             date: string;
+            paymentMethod?: components["schemas"]["PaymentMethodEnum"] | components["schemas"]["BlankEnum"];
             createdBy?: string | null;
         };
         /**
@@ -5952,6 +6033,7 @@ export interface components {
             isBlocked?: boolean;
             /** Format: date */
             readonly createdAt: string;
+            /** @description Cari bakiye = Σ borç − Σ alacak (kısmi tahsilatlar dahil; apps/accounting/ledger.py). */
             readonly accountBalance: string;
         };
         /**
@@ -6121,7 +6203,10 @@ export interface components {
             guestId: number;
             notes: string;
             folioItems: components["schemas"]["InvoicePrepareFolioItem"][];
+            /** @description Faturalanabilir tutar (ücretler − indirim, KDV dahil) */
             folioTotal: string;
+            /** @description Folio indirim toplamı */
+            discountTotal: string;
             /** @description Folio ödemeleri toplamı (KDV dahil) — fatura varsayılan tutarı */
             paymentsTotal: string;
             hasAccommodationTax: boolean;
@@ -6405,6 +6490,14 @@ export interface components {
          * @enum {string}
          */
         OrderItemStatusStatusEnum: "pending" | "preparing" | "ready" | "served" | "cancelled";
+        PaginatedAccountTransactionList: components["schemas"]["AccountTransaction"][];
+        PaginatedExpenseList: components["schemas"]["Expense"][];
+        PaginatedFaultList: components["schemas"]["Fault"][];
+        PaginatedGuestList: components["schemas"]["Guest"][];
+        PaginatedInvoiceList: components["schemas"]["Invoice"][];
+        PaginatedReservationList: components["schemas"]["Reservation"][];
+        PaginatedShiftHandoverList: components["schemas"]["ShiftHandover"][];
+        PaginatedTabList: components["schemas"]["Tab"][];
         PatchedAgencyRequest: {
             /** Acente Adı */
             name?: string;
@@ -6550,10 +6643,13 @@ export interface components {
          * @description Hesap kalemi CRUD. reservationId ile doğrudan rezervasyona bağlanır.
          *
          *     Özel davranış — create():
-         *         - category='payment' veya 'account_transfer_*' ise Reservation.paid_amount += amount
-         *         - category='account_transfer_debit'/'credit' ise AccountTransaction otomatik yaratılır
-         *           (hedef: rez.company → rez.agency → primary guest sırasıyla)
+         *         - category='payment' → paymentMethod zorunlu (nakit / kart / havale / diğer);
+         *           mesai ve kasa özetleri ödemeleri yönteme göre buradan otomatik toplar.
+         *         - category='account_transfer_debit'/'credit' → cari deftere borç / alacak yazılır
+         *           (apps/accounting/ledger.py; hedef: rez.company → rez.agency → ilk misafir).
+         *         - Her mutasyondan sonra Reservation.refresh_totals() — tek doğruluk kaynağı.
          *         - Hepsi transaction.atomic içinde; biri başarısız olursa tümü geri alınır.
+         *     Cari aktarım kalemleri düzenlenemez (defterle tutarsızlık olmasın): silinip yeniden eklenir.
          */
         PatchedFolioItemRequest: {
             reservationId?: number;
@@ -6572,6 +6668,7 @@ export interface components {
              * Format: date
              */
             date?: string;
+            paymentMethod?: components["schemas"]["PaymentMethodEnum"] | components["schemas"]["BlankEnum"];
             createdBy?: string | null;
         };
         /**
@@ -6854,6 +6951,14 @@ export interface components {
             /** Format: date-time */
             dueDate?: string | null;
         };
+        /**
+         * @description * `cash` - Nakit
+         *     * `card` - Kredi Kartı
+         *     * `transfer` - Havale/EFT
+         *     * `other` - Diğer
+         * @enum {string}
+         */
+        PaymentMethodEnum: "cash" | "card" | "transfer" | "other";
         /**
          * @description * `low` - Düşük
          *     * `medium` - Normal
@@ -7159,6 +7264,8 @@ export interface components {
             readonly cardSales: string;
             /** Format: decimal */
             readonly cashSales: string;
+            /** Format: decimal */
+            readonly otherSales: string;
             /** Format: decimal */
             readonly totalSales: string;
             readonly roomsSold: number;
@@ -7625,7 +7732,12 @@ export type $defs = Record<string, never>;
 export interface operations {
     account_transactions_list: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Sayfalanmış sonuç kümesinde bir sayfa numarası. */
+                page?: number;
+                /** @description Her sayfada döndürülecek sonuç sayısı. */
+                pageSize?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -7637,7 +7749,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["AccountTransaction"][];
+                    "application/json": components["schemas"]["PaginatedAccountTransactionList"];
                 };
             };
         };
@@ -7653,6 +7765,34 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountTransaction"];
+                };
+            };
+        };
+    };
+    account_transactions_cancel_payment_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Bir Cari Hesap Hareketi öğesini tanımlayan benzersiz tamsayı değeri. */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccountTransactionRequest"];
+                "application/x-www-form-urlencoded": components["schemas"]["AccountTransactionRequest"];
+                "multipart/form-data": components["schemas"]["AccountTransactionRequest"];
+            };
+        };
         responses: {
             200: {
                 headers: {
@@ -7692,7 +7832,70 @@ export interface operations {
             };
         };
     };
+    account_transactions_collect_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccountTransactionRequest"];
+                "application/x-www-form-urlencoded": components["schemas"]["AccountTransactionRequest"];
+                "multipart/form-data": components["schemas"]["AccountTransactionRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountTransaction"];
+                };
+            };
+        };
+    };
     account_transactions_debtor_list_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountTransaction"];
+                };
+            };
+        };
+    };
+    account_transactions_debtors_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountTransaction"];
+                };
+            };
+        };
+    };
+    account_transactions_open_debts_retrieve: {
         parameters: {
             query?: never;
             header?: never;
@@ -7713,7 +7916,12 @@ export interface operations {
     };
     accounting_expenses_list: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Sayfalanmış sonuç kümesinde bir sayfa numarası. */
+                page?: number;
+                /** @description Her sayfada döndürülecek sonuç sayısı. */
+                pageSize?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -7725,7 +7933,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Expense"][];
+                    "application/json": components["schemas"]["PaginatedExpenseList"];
                 };
             };
         };
@@ -9349,7 +9557,12 @@ export interface operations {
     };
     faults_list: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Sayfalanmış sonuç kümesinde bir sayfa numarası. */
+                page?: number;
+                /** @description Her sayfada döndürülecek sonuç sayısı. */
+                pageSize?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -9361,7 +9574,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Fault"][];
+                    "application/json": components["schemas"]["PaginatedFaultList"];
                 };
             };
         };
@@ -9691,7 +9904,12 @@ export interface operations {
     };
     guests_list: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Sayfalanmış sonuç kümesinde bir sayfa numarası. */
+                page?: number;
+                /** @description Her sayfada döndürülecek sonuç sayısı. */
+                pageSize?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -9703,7 +9921,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Guest"][];
+                    "application/json": components["schemas"]["PaginatedGuestList"];
                 };
             };
         };
@@ -10649,7 +10867,12 @@ export interface operations {
     };
     invoices_list: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Sayfalanmış sonuç kümesinde bir sayfa numarası. */
+                page?: number;
+                /** @description Her sayfada döndürülecek sonuç sayısı. */
+                pageSize?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -10661,7 +10884,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Invoice"][];
+                    "application/json": components["schemas"]["PaginatedInvoiceList"];
                 };
             };
         };
@@ -12150,7 +12373,12 @@ export interface operations {
     };
     reservations_list: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Sayfalanmış sonuç kümesinde bir sayfa numarası. */
+                page?: number;
+                /** @description Her sayfada döndürülecek sonuç sayısı. */
+                pageSize?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -12162,7 +12390,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Reservation"][];
+                    "application/json": components["schemas"]["PaginatedReservationList"];
                 };
             };
         };
@@ -13028,7 +13256,12 @@ export interface operations {
     };
     shifts_list: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Sayfalanmış sonuç kümesinde bir sayfa numarası. */
+                page?: number;
+                /** @description Her sayfada döndürülecek sonuç sayısı. */
+                pageSize?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -13040,7 +13273,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ShiftHandover"][];
+                    "application/json": components["schemas"]["PaginatedShiftHandoverList"];
                 };
             };
         };
@@ -13950,7 +14183,12 @@ export interface operations {
     };
     tabs_list: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Sayfalanmış sonuç kümesinde bir sayfa numarası. */
+                page?: number;
+                /** @description Her sayfada döndürülecek sonuç sayısı. */
+                pageSize?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -13962,7 +14200,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Tab"][];
+                    "application/json": components["schemas"]["PaginatedTabList"];
                 };
             };
         };

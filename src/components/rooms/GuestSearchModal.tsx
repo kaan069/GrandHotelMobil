@@ -18,7 +18,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
-import { AppInput, AppButton } from '../common';
+import { AppInput } from '../common';
 import { colors, spacing, fontSize, borderRadius } from '../../theme';
 import { Guest } from '../../utils/types';
 import { guestsApi } from '../../services/api';
@@ -40,11 +40,14 @@ const GuestSearchModal: React.FC<GuestSearchModalProps> = ({
   const [results, setResults] = useState<Guest[]>([]);
   const [searchTimer, setSearchTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
 
-  /* Modal açıldığında tüm misafirleri yükle */
+  /* Arama boşken ilk 50 misafir (alfabetik) — tüm misafir listesi her açılışta indirilmez */
+  const loadFirstPage = () =>
+    guestsApi.getPage({ page: 1, pageSize: 50 }).then((res) => res.results);
+
   useEffect(() => {
     if (visible) {
       setQuery('');
-      guestsApi.getAll().then(setResults).catch(() => setResults([]));
+      loadFirstPage().then(setResults).catch(() => setResults([]));
     }
   }, [visible]);
 
@@ -56,7 +59,7 @@ const GuestSearchModal: React.FC<GuestSearchModalProps> = ({
       try {
         const data = text.trim()
           ? await guestsApi.search(text)
-          : await guestsApi.getAll();
+          : await loadFirstPage();
         setResults(data);
       } catch {
         setResults([]);

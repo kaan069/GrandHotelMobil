@@ -2,7 +2,9 @@
  * InvoiceFormModal — Mobilde Paraşüt faturası kesme modalı.
  *
  * Akış:
- *  1. Modal açılınca /api/invoices/prepare/{roomId}/ ile müşteri + folio ön doldur
+ *  1. Modal açılınca /api/invoices/prepare/{roomId}/ ile müşteri ön doldurulur; tek
+ *     "Konaklama Hizmeti" kalemi KDV dahil tutardan net fiyatla hazırlanır (web InvoiceCreateDialog ile aynı):
+ *       firma / acente → net ciro (ücretler − indirim), şahıs → folio ödemeleri (yoksa net ciro)
  *  2. Kullanıcı kalem ekler / düzenler
  *  3. Submit: create → send → poll (web ile aynı pattern)
  *  4. Tamamlanınca onSuccess(pdfUrl, invoiceNo) callback
@@ -104,15 +106,16 @@ const InvoiceFormModal: React.FC<InvoiceFormModalProps> = ({
         setTaxNumber(data.taxNumber || '');
         setAddress(data.address || '');
         setNotes(data.notes || '');
-        if (data.folioItems && data.folioItems.length > 0) {
-          setItems(
-            data.folioItems.map((f, idx) => ({
-              id: idx + 1,
-              description: f.description,
-              quantity: '1',
-              unitPrice: String(Number(f.amount) || 0),
-            }))
-          );
+        const payments = Number(data.paymentsTotal) || 0;
+        const netFolio = Number(data.folioTotal) || 0;
+        const gross = data.customerType === 'individual' && payments > 0 ? payments : netFolio;
+        if (gross > 0) {
+          setItems([{
+            id: 1,
+            description: 'Konaklama Hizmeti',
+            quantity: '1',
+            unitPrice: (gross / (1 + vatRate / 100)).toFixed(2),
+          }]);
         }
       })
       .catch((err: Error) => {

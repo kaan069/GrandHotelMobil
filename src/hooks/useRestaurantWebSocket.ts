@@ -50,7 +50,7 @@ export default function useRestaurantWebSocket({
   enabled = true,
 }: UseRestaurantWebSocketOptions) {
   const wsRef = useRef<WebSocket | null>(null);
-  const reconnectTimer = useRef<ReturnType<typeof setTimeout>>();
+  const reconnectTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const onNewOrderRef = useRef(onNewOrder);
   const onOrderStatusUpdateRef = useRef(onOrderStatusUpdate);

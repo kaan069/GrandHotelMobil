@@ -22,7 +22,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 
-import { AppButton, AppInput, AppCard } from '../../components/common';
+import { AppButton, AppInput } from '../../components/common';
 import { faultsApi } from '../../services/api';
 import { colors, spacing, fontSize, borderRadius } from '../../theme';
 import { FAULT_CATEGORIES } from '../../utils/constants';

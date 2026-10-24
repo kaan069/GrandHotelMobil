@@ -21,6 +21,8 @@ import {
   AppCard, AppButton, AppInput, LoadingState, EmptyState, OptionPickerModal, parseAmount,
 } from '../../components/common';
 import CalendarPicker from '../../components/common/CalendarPicker';
+import usePagedList from '../../hooks/usePagedList';
+import DebtCards from '../../components/cari/DebtCards';
 import { colors, spacing, fontSize, borderRadius } from '../../theme';
 import { EXPENSE_CATEGORIES, EXPENSE_PAYMENT_METHODS, FOLIO_CATEGORY_LABELS } from '../../utils/constants';
 import {
@@ -58,7 +60,6 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ onClose }) => {
   const [dateTo, setDateTo] = useState(localDate(today));
   const [calendarTarget, setCalendarTarget] = useState<'from' | 'to' | 'expense' | null>(null);
   const [ie, setIe] = useState<IncomeExpenseSummary | null>(null);
-  const [expenses, setExpenses] = useState<ApiExpense[]>([]);
 
   /* Şahıs carileri */
   const [guestDebtors, setGuestDebtors] = useState<{ items: GuestDebtor[]; count: number; totalBalance: string } | null>(null);
@@ -70,18 +71,24 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ onClose }) => {
   const [expForm, setExpForm] = useState({ category: 'other', amount: '', date: localDate(today), description: '', vendor: '', paymentMethod: 'cash' });
   const [picker, setPicker] = useState<'category' | 'method' | null>(null);
   const [saving, setSaving] = useState(false);
+  /* Şahıs carisine dokununca borç kutucukları */
+  const [guestDetail, setGuestDetail] = useState<{ id: number; name: string } | null>(null);
+
+  /* Giderler sayfa sayfa (en yeni önce) — sadece Gelir-Gider sekmesinde istek atılır */
+  const expenseList = usePagedList<ApiExpense>(
+    (page, pageSize) => (tab === 'income'
+      ? accountingApi.listExpensesPage({ page, pageSize, dateFrom, dateTo })
+      : Promise.resolve({ count: 0, next: null, previous: null, results: [] })),
+    [tab, dateFrom, dateTo],
+  );
+  const expenses = expenseList.items;
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       if (tab === 'summary') setSummary(await accountingApi.summary());
       else if (tab === 'income') {
-        const [ieData, expData] = await Promise.all([
-          accountingApi.incomeExpense({ dateFrom, dateTo }),
-          accountingApi.listExpenses({ dateFrom, dateTo }),
-        ]);
-        setIe(ieData);
-        setExpenses(expData);
+        setIe(await accountingApi.incomeExpense({ dateFrom, dateTo }));
       } else setGuestDebtors(await accountingApi.guestDebtors());
     } catch (err) {
       Alert.alert('Hata', (err as Error).message || 'Veriler yüklenemedi');
@@ -92,9 +99,14 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ onClose }) => {
 
   useEffect(() => { load(); }, [load]);
 
+  /* Özet + (gelir-gider sekmesinde) gider listesi; gider listesi sekme / tarih değişince kendisi yüklenir */
+  const reloadAll = async () => {
+    await Promise.all([load(), tab === 'income' ? expenseList.refresh() : Promise.resolve()]);
+  };
+
   const onRefresh = async () => {
     setRefreshing(true);
-    await load();
+    await reloadAll();
     setRefreshing(false);
   };
 
@@ -117,7 +129,7 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ onClose }) => {
         paymentMethod: expForm.paymentMethod,
       });
       setExpenseOpen(false);
-      load();
+      reloadAll();
     } catch (err) {
       Alert.alert('Hata', (err as Error).message || 'Gider kaydedilemedi');
     } finally {
@@ -134,7 +146,7 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ onClose }) => {
         onPress: async () => {
           try {
             await accountingApi.deleteExpense(e.id);
-            load();
+            reloadAll();
           } catch (err) {
             Alert.alert('Hata', (err as Error).message || 'Silinemedi');
           }
@@ -189,7 +201,7 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ onClose }) => {
 
       <AppCard style={styles.card}>
         <View style={styles.sectionHeader}>
-          <Text style={[styles.sectionTitle, { flex: 1, marginBottom: 0 }]}>Giderler ({expenses.length})</Text>
+          <Text style={[styles.sectionTitle, { flex: 1, marginBottom: 0 }]}>Giderler ({expenseList.total})</Text>
           <TouchableOpacity style={styles.addBtn} onPress={openExpenseForm}>
             <Ionicons name="add" size={18} color={colors.textWhite} />
             <Text style={styles.addBtnText}>Gider Ekle</Text>
@@ -210,6 +222,16 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ onClose }) => {
             </TouchableOpacity>
           ))
         )}
+        {expenseList.hasMore && (
+          <AppButton
+            title="Daha fazla göster"
+            variant="outline"
+            icon="chevron-down-outline"
+            onPress={expenseList.loadMore}
+            loading={expenseList.loadingMore}
+            style={{ marginTop: spacing.sm }}
+          />
+        )}
         {expenses.length > 0 && <Text style={styles.hint}>Silmek için gidere uzun basın.</Text>}
       </AppCard>
     </>
@@ -225,18 +247,19 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ onClose }) => {
         <EmptyState icon="checkmark-done-outline" title="Açık şahıs carisi yok" />
       ) : (
         guestDebtors!.items.map((g) => (
-          <AppCard key={g.id} style={styles.card}>
+          <AppCard key={g.id} style={styles.card} onPress={() => setGuestDetail({ id: g.id, name: g.name })}>
             <View style={styles.guestRow}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.expenseTitle}>{g.name}</Text>
                 <Text style={styles.expenseMeta}>{g.phone || '—'}{g.tcNo ? ` · TC ${g.tcNo}` : ''}</Text>
               </View>
               <Text style={[styles.expenseAmount, { color: colors.error }]}>{money(g.balance)}</Text>
+              <Ionicons name="chevron-forward" size={18} color={colors.textDisabled} />
             </View>
           </AppCard>
         ))
       )}
-      <Text style={styles.hint}>Tahsilat için Görevler → Borçlular ekranını kullanın.</Text>
+      <Text style={styles.hint}>Borçlarını görüp tahsilat almak için misafire dokunun.</Text>
     </>
   );
 
@@ -341,6 +364,22 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ onClose }) => {
         }}
         onClose={() => setCalendarTarget(null)}
       />
+
+      {/* Şahıs carisi — konaklama başına borç kutucukları */}
+      <Modal visible={!!guestDetail} animationType="slide" onRequestClose={() => setGuestDetail(null)}>
+        <View style={styles.container}>
+          <View style={styles.header}>
+            <TouchableOpacity onPress={() => setGuestDetail(null)}>
+              <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
+            </TouchableOpacity>
+            <Text style={styles.title} numberOfLines={1}>{guestDetail?.name}</Text>
+            <View style={{ width: 24 }} />
+          </View>
+          <ScrollView contentContainerStyle={styles.content}>
+            {guestDetail && <DebtCards target={{ guest: guestDetail.id }} onChanged={load} />}
+          </ScrollView>
+        </View>
+      </Modal>
     </View>
   );
 };

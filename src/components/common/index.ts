@@ -11,6 +11,7 @@ export { default as EmptyState } from './EmptyState';
 export { default as LoadingState } from './LoadingState';
 export { default as OptionPickerModal } from './OptionPickerModal';
 export { default as PromptModal, parseAmount, isAmountText } from './PromptModal';
+export { default as LoadMoreFooter } from './LoadMoreFooter';
 
 export type { AppButtonProps } from './AppButton';
 export type { AppInputProps } from './AppInput';

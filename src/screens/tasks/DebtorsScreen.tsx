@@ -1,11 +1,11 @@
 /**
  * DebtorsScreen — Borçlular Ekranı
  *
- * Açık tüm cari hesap hareketleri (debit + credit):
- *   - Debit (borçlu) → pozitif, kırmızı
- *   - Credit (alacaklı) → negatif, yeşil
- * 3 filtre sekmesi: Tümü / Şahıs / Firma-Acente
- * Kayda basınca → Ödeme Ekle prompt → settle endpoint
+ * Cari bakiyesi olan her firma / acente / şahıs tek satır (GET /account-transactions/debtors/):
+ * açık konaklama sayısı, en eski borç, bakiye. Filtre: Tümü / Şahıs / Firma-Acente.
+ * Borçluya dokununca detay: borç kutucukları (DebtCards — konaklama başına, seçip tahsilat);
+ * firma / acentede altında cari hesap ekstresi (CariStatement — geçmiş, avans, iptal).
+ * Web karşılığı: pages/guests/DebtorList.tsx
  */
 
 import React, { useEffect, useState, useCallback } from 'react';
@@ -14,18 +14,19 @@ import {
   Text,
   StyleSheet,
   FlatList,
+  ScrollView,
   TouchableOpacity,
   Alert,
   RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
-import { AppCard, EmptyState, LoadingState, PromptModal, parseAmount } from '../../components/common';
+import { AppCard, EmptyState, LoadingState } from '../../components/common';
+import DebtCards from '../../components/cari/DebtCards';
+import CariStatement from '../../components/cari/CariStatement';
 import { colors, spacing, fontSize, borderRadius } from '../../theme';
-import { deferAlert } from '../../utils/alert';
-import useAuth from '../../hooks/useAuth';
 import { accountTransactionsApi } from '../../services/api';
-import type { ApiAccountTransaction, AccountTransactionDebtorListResponse } from '../../services/api';
+import type { CariDebtorPartyRow, CariDebtorsResponse, CariTargetType } from '../../services/api';
 
 interface DebtorsScreenProps {
   onClose: () => void;
@@ -39,25 +40,37 @@ const formatCurrency = (amount: number): string =>
 const formatDate = (d: string | null) =>
   d ? new Date(d).toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—';
 
-const TARGET_LABEL: Record<string, string> = {
+const daysAgo = (d: string | null) =>
+  d ? Math.max(0, Math.floor((Date.now() - new Date(d).getTime()) / 86400000)) : 0;
+
+const TARGET_LABEL: Record<CariTargetType, string> = {
   company: 'Firma',
   agency: 'Acente',
   guest: 'Şahıs',
 };
 
+const TARGET_ICON: Record<CariTargetType, keyof typeof Ionicons.glyphMap> = {
+  company: 'business-outline',
+  agency: 'globe-outline',
+  guest: 'person-outline',
+};
+
 const DebtorsScreen: React.FC<DebtorsScreenProps> = ({ onClose }) => {
-  const { user } = useAuth();
-  const [data, setData] = useState<AccountTransactionDebtorListResponse | null>(null);
+  const [data, setData] = useState<CariDebtorsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [filter, setFilter] = useState<FilterType>('all');
+  const [selected, setSelected] = useState<CariDebtorPartyRow | null>(null);
+
+  /* Detay: kutucuklar ve ekstre birbirini tazeler */
+  const [debtsReload, setDebtsReload] = useState(0);
+  const [statementReload, setStatementReload] = useState(0);
 
   const load = useCallback(async () => {
     try {
-      const res = await accountTransactionsApi.getDebtorList();
-      setData(res);
-    } catch (err: any) {
-      Alert.alert('Hata', err.message || 'Borçlular yüklenemedi');
+      setData(await accountTransactionsApi.getDebtors());
+    } catch (err) {
+      Alert.alert('Hata', (err as Error).message || 'Borçlular yüklenemedi');
     }
   }, []);
 
@@ -72,49 +85,57 @@ const DebtorsScreen: React.FC<DebtorsScreenProps> = ({ onClose }) => {
     setRefreshing(false);
   }, [load]);
 
-  /* Cari hareketi kapat — tutar PromptModal ile (Alert.prompt Android'de çalışmaz) */
-  const [settleTarget, setSettleTarget] = useState<ApiAccountTransaction | null>(null);
-  const handleSettle = (tx: ApiAccountTransaction) => setSettleTarget(tx);
-  const submitSettle = async (value: string) => {
-    if (!settleTarget) return;
-    const amount = parseAmount(value);
-    await accountTransactionsApi.settle(settleTarget.id, {
-      amount,
-      description: `Cari hesap ödemesi — ${settleTarget.description || '#' + settleTarget.id}`,
-      staffName: user?.name || '',
-    });
-    deferAlert('Başarılı', `${formatCurrency(amount)} ödeme kaydedildi.`);
-    load();
-  };
-
   const items = data?.items || [];
   const filteredItems = items.filter((i) => {
     if (filter === 'guest') return i.targetType === 'guest';
     if (filter === 'company_or_agency') return i.targetType !== 'guest';
     return true;
   });
-
   const guestCount = items.filter((i) => i.targetType === 'guest').length;
-  const corpCount = items.filter((i) => i.targetType !== 'guest').length;
+  const corpCount = items.length - guestCount;
 
-  if (loading) {
+  /* ─── Borçlu detayı ─── */
+  if (selected) {
+    const target = { [selected.targetType]: selected.id } as { company?: number; agency?: number; guest?: number };
     return (
       <View style={styles.container}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={onClose}>
-            <Ionicons name="close" size={28} color={colors.textPrimary} />
+          <TouchableOpacity onPress={() => { setSelected(null); load(); }}>
+            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
           </TouchableOpacity>
-          <Text style={styles.title}>Borçlular</Text>
-          <View style={{ width: 28 }} />
+          <Text style={styles.title} numberOfLines={1}>{selected.name}</Text>
+          <View style={{ width: 24 }} />
         </View>
-        <LoadingState message="Borçlular yükleniyor..." />
+        <ScrollView contentContainerStyle={styles.detailContent}>
+          <View style={styles.partyRow}>
+            <View style={styles.targetBadge}>
+              <Text style={styles.targetBadgeText}>{TARGET_LABEL[selected.targetType]}</Text>
+            </View>
+            {!!selected.phone && <Text style={styles.itemSub}>{selected.phone}</Text>}
+          </View>
+
+          <DebtCards
+            target={target}
+            reloadToken={debtsReload}
+            onChanged={() => { setStatementReload((t) => t + 1); load(); }}
+          />
+
+          {selected.targetType !== 'guest' && (
+            <View style={{ marginTop: spacing.md }}>
+              <CariStatement
+                kind={selected.targetType}
+                partyId={selected.id}
+                reloadToken={statementReload}
+                onChanged={() => { setDebtsReload((t) => t + 1); load(); }}
+              />
+            </View>
+          )}
+        </ScrollView>
       </View>
     );
   }
 
-  const summary = data?.summary;
-  const netBalance = summary ? parseFloat(summary.netBalance) : 0;
-
+  /* ─── Borçlu listesi ─── */
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -125,137 +146,86 @@ const DebtorsScreen: React.FC<DebtorsScreenProps> = ({ onClose }) => {
         <View style={{ width: 28 }} />
       </View>
 
-      {/* Özet */}
-      {summary && (
-        <View style={styles.summaryRow}>
-          <View style={[styles.summaryBox, { backgroundColor: colors.error + '15' }]}>
-            <Text style={styles.summaryLabel}>Borç</Text>
-            <Text style={[styles.summaryValue, { color: colors.error }]}>
-              {formatCurrency(parseFloat(summary.debitTotal))}
-            </Text>
-          </View>
-          <View style={[styles.summaryBox, { backgroundColor: colors.success + '15' }]}>
-            <Text style={styles.summaryLabel}>Alacak</Text>
-            <Text style={[styles.summaryValue, { color: colors.success }]}>
-              {formatCurrency(parseFloat(summary.creditTotal))}
-            </Text>
-          </View>
-          <View style={[styles.summaryBox, { backgroundColor: colors.divider }]}>
-            <Text style={styles.summaryLabel}>Net</Text>
-            <Text style={[styles.summaryValue, { color: netBalance > 0 ? colors.error : netBalance < 0 ? colors.success : colors.textPrimary }]}>
-              {formatCurrency(netBalance)}
-            </Text>
-          </View>
-        </View>
-      )}
-
-      {/* Filtre sekmeleri */}
-      <View style={styles.filterRow}>
-        <TouchableOpacity
-          style={[styles.filterChip, filter === 'all' && styles.filterChipActive]}
-          onPress={() => setFilter('all')}
-        >
-          <Text style={[styles.filterText, filter === 'all' && styles.filterTextActive]}>
-            Tümü ({items.length})
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.filterChip, filter === 'guest' && styles.filterChipActive]}
-          onPress={() => setFilter('guest')}
-        >
-          <Text style={[styles.filterText, filter === 'guest' && styles.filterTextActive]}>
-            Şahıs ({guestCount})
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.filterChip, filter === 'company_or_agency' && styles.filterChipActive]}
-          onPress={() => setFilter('company_or_agency')}
-        >
-          <Text style={[styles.filterText, filter === 'company_or_agency' && styles.filterTextActive]}>
-            Firma/Acente ({corpCount})
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Liste */}
-      {filteredItems.length === 0 ? (
-        <EmptyState
-          icon="checkmark-done-circle-outline"
-          title="Açık Kayıt Yok"
-          description="Bu filtrede açık cari hesap kaydı bulunmuyor."
-        />
+      {loading ? (
+        <LoadingState message="Borçlular yükleniyor..." />
       ) : (
-        <FlatList
-          data={filteredItems}
-          keyExtractor={(item) => String(item.id)}
-          contentContainerStyle={styles.list}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
-          }
-          renderItem={({ item }) => {
-            const isCredit = item.type === 'credit';
-            const amount = parseFloat(item.amount) || 0;
-            return (
-              <AppCard style={styles.itemCard}>
-                <TouchableOpacity onPress={() => handleSettle(item)}>
-                  <View style={styles.itemHeader}>
-                    <View style={styles.targetBadge}>
-                      <Text style={styles.targetBadgeText}>
-                        {TARGET_LABEL[item.targetType || ''] || '—'}
-                      </Text>
-                    </View>
-                    <Text style={styles.itemDate}>{formatDate(item.createdAt)}</Text>
-                  </View>
-                  <Text style={styles.itemTarget}>{item.targetName}</Text>
-                  {item.guestName && item.targetType !== 'guest' && (
-                    <Text style={styles.itemSub}>Misafir: {item.guestName}</Text>
-                  )}
-                  {item.roomNumber && (
-                    <Text style={styles.itemSub}>Oda: {item.roomNumber}</Text>
-                  )}
-                  {item.description ? (
-                    <Text style={styles.itemSub}>{item.description}</Text>
-                  ) : null}
-                  <View style={styles.itemFooter}>
-                    <Text
-                      style={[
-                        styles.itemAmount,
-                        { color: isCredit ? colors.success : colors.error },
-                      ]}
-                    >
-                      {isCredit ? '−' : '+'}{formatCurrency(amount)}
-                    </Text>
-                    <View style={styles.settleBtn}>
-                      <Ionicons name="cash-outline" size={16} color={colors.primary} />
-                      <Text style={styles.settleBtnText}>Kapat</Text>
-                    </View>
-                  </View>
-                </TouchableOpacity>
-              </AppCard>
-            );
-          }}
-        />
-      )}
+        <>
+          {/* Özet */}
+          {data && (
+            <View style={styles.summaryRow}>
+              <View style={[styles.summaryBox, { backgroundColor: colors.error + '15' }]}>
+                <Text style={styles.summaryLabel}>Toplam</Text>
+                <Text style={[styles.summaryValue, { color: colors.error }]}>
+                  {formatCurrency(Number(data.summary.totalBalance) || 0)}
+                </Text>
+              </View>
+              <View style={[styles.summaryBox, { backgroundColor: colors.divider }]}>
+                <Text style={styles.summaryLabel}>Borçlu</Text>
+                <Text style={styles.summaryValue}>{data.summary.count}</Text>
+              </View>
+              <View style={[styles.summaryBox, { backgroundColor: colors.divider }]}>
+                <Text style={styles.summaryLabel}>Açık Konaklama</Text>
+                <Text style={styles.summaryValue}>{data.summary.openCount}</Text>
+              </View>
+            </View>
+          )}
 
-      <PromptModal
-        visible={!!settleTarget}
-        title={settleTarget?.type === 'credit' ? 'Alacak İşlemi' : 'Borç Ödemesi'}
-        message={settleTarget
-          ? `${TARGET_LABEL[settleTarget.targetType || ''] || '-'}: ${settleTarget.targetName}\nTutar: ${formatCurrency(parseFloat(settleTarget.amount))}`
-          : undefined}
-        placeholder="Ödeme tutarı"
-        initialValue={settleTarget?.amount || ''}
-        keyboardType="decimal-pad"
-        confirmText="Kaydet"
-        validate={(v) => {
-          const amount = parseAmount(v);
-          if (amount <= 0) return 'Geçerli bir tutar girin';
-          if (settleTarget && amount > parseFloat(settleTarget.amount) + 0.001) return 'Tutar kayıt tutarından büyük olamaz';
-          return null;
-        }}
-        onConfirm={submitSettle}
-        onClose={() => setSettleTarget(null)}
-      />
+          {/* Filtre sekmeleri */}
+          <View style={styles.filterRow}>
+            {([
+              ['all', `Tümü (${items.length})`],
+              ['guest', `Şahıs (${guestCount})`],
+              ['company_or_agency', `Firma/Acente (${corpCount})`],
+            ] as [FilterType, string][]).map(([value, label]) => (
+              <TouchableOpacity
+                key={value}
+                style={[styles.filterChip, filter === value && styles.filterChipActive]}
+                onPress={() => setFilter(value)}
+              >
+                <Text style={[styles.filterText, filter === value && styles.filterTextActive]}>{label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <FlatList
+            data={filteredItems}
+            keyExtractor={(item) => `${item.targetType}-${item.id}`}
+            contentContainerStyle={styles.list}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+            ListEmptyComponent={
+              <EmptyState
+                icon="checkmark-done-circle-outline"
+                title="Borçlu Yok"
+                description="Bu filtrede açık cari bakiyesi olan kimse yok."
+              />
+            }
+            renderItem={({ item }) => {
+              const age = daysAgo(item.oldestOpenAt);
+              return (
+                <AppCard style={styles.itemCard} onPress={() => setSelected(item)}>
+                  <View style={styles.itemRow}>
+                    <View style={styles.itemIcon}>
+                      <Ionicons name={TARGET_ICON[item.targetType]} size={22} color={colors.primary} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.itemTarget} numberOfLines={1}>{item.name}</Text>
+                      <Text style={styles.itemSub}>
+                        {TARGET_LABEL[item.targetType]} · {item.openCount} konaklama
+                        {item.oldestOpenAt ? ` · en eski ${formatDate(item.oldestOpenAt)}` : ''}
+                      </Text>
+                      {age > 30 && <Text style={[styles.itemSub, { color: colors.error }]}>{age} gündür açık</Text>}
+                    </View>
+                    <View style={{ alignItems: 'flex-end' }}>
+                      <Text style={styles.itemAmount}>{formatCurrency(Number(item.balance) || 0)}</Text>
+                      <Ionicons name="chevron-forward" size={18} color={colors.textDisabled} />
+                    </View>
+                  </View>
+                </AppCard>
+              );
+            }}
+          />
+        </>
+      )}
     </View>
   );
 };
@@ -278,7 +248,7 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.md, alignItems: 'center',
   },
   summaryLabel: { fontSize: fontSize.xs, color: colors.textSecondary, marginBottom: 2 },
-  summaryValue: { fontSize: fontSize.md, fontWeight: '800' },
+  summaryValue: { fontSize: fontSize.md, fontWeight: '800', color: colors.textPrimary },
   filterRow: {
     flexDirection: 'row', paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
     gap: 8, backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border,
@@ -292,25 +262,22 @@ const styles = StyleSheet.create({
   filterTextActive: { color: colors.textWhite },
   list: { padding: spacing.md, paddingBottom: spacing.xxl },
   itemCard: { marginBottom: spacing.sm },
-  itemHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
+  itemRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  itemIcon: {
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: colors.primary + '15', alignItems: 'center', justifyContent: 'center',
+  },
+  itemTarget: { fontSize: fontSize.md, fontWeight: '700', color: colors.textPrimary },
+  itemSub: { fontSize: fontSize.xs, color: colors.textSecondary, marginTop: 2 },
+  itemAmount: { fontSize: fontSize.md, fontWeight: '800', color: colors.error },
+  detailContent: { padding: spacing.md, paddingBottom: spacing.xxl },
+  partyRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.md },
   targetBadge: {
     backgroundColor: colors.primary + '15',
     paddingHorizontal: 8, paddingVertical: 3,
     borderRadius: borderRadius.sm,
   },
   targetBadgeText: { fontSize: fontSize.xs, fontWeight: '700', color: colors.primary },
-  itemDate: { fontSize: fontSize.xs, color: colors.textSecondary },
-  itemTarget: { fontSize: fontSize.md, fontWeight: '700', color: colors.textPrimary, marginBottom: 4 },
-  itemSub: { fontSize: fontSize.xs, color: colors.textSecondary, marginBottom: 2 },
-  itemFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 },
-  itemAmount: { fontSize: fontSize.lg, fontWeight: '800' },
-  settleBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingHorizontal: 12, paddingVertical: 6,
-    borderRadius: borderRadius.sm,
-    borderWidth: 1, borderColor: colors.primary,
-  },
-  settleBtnText: { fontSize: fontSize.sm, fontWeight: '600', color: colors.primary },
 });
 
 export default DebtorsScreen;

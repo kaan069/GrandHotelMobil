@@ -1,13 +1,14 @@
 /**
  * ShiftHandoverScreen — Mesai Devri (ön büro vardiyası)
  *
- * Aktif mesai: kimden kime, başlangıç; "Mesaiyi Devret" (yeni personel seçilir,
- * önceki mesai otomatik kapanıp özet alınır) ve "Mesaiyi Kapat" (kart / nakit
- * tutarı + not girilir). Geçmiş: kapanmış mesailer gün gün; dokununca özet.
- * Özet (satış, satılan / dolu / boş oda) backend'de sadece bu otelin verisiyle hesaplanır.
+ * Aktif mesai: kimden kime, başlangıç ve şu ana kadarki özet; "Mesaiyi Devret" (yeni personel
+ * seçilir, önceki mesai otomatik kapanıp özet alınır) ve "Mesaiyi Kapat" (sadece not).
+ * Kart / nakit / diğer tahsilat elle girilmez: backend mesai süresince alınan folio ödemeleri
+ * ve cari tahsilatlarını ödeme yöntemine göre toplar (staff/views.py shift_summary).
+ * Geçmiş: kapanmış mesailer gün gün, sayfa sayfa ("Daha fazla"); dokununca özet.
  * Web karşılığı: pages/shift/ShiftHandover.tsx + components/layout/ShiftHandoverButton.tsx
  *
- * API: shiftsApi.getAll / getActive / create / close, staffApi.getAll
+ * API: shiftsApi.getPage / getActive / create / close, staffApi.getAll
  */
 
 import React, { useCallback, useEffect, useState } from 'react';
@@ -15,14 +16,15 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, RefreshCon
 import { Ionicons } from '@expo/vector-icons';
 
 import {
-  AppCard, AppButton, AppInput, StatusChip, LoadingState, EmptyState, parseAmount, isAmountText,
+  AppCard, AppButton, AppInput, StatusChip, LoadingState, EmptyState,
 } from '../../components/common';
 import { colors, spacing, fontSize, borderRadius } from '../../theme';
 import { deferAlert } from '../../utils/alert';
 import { ROLE_LABELS } from '../../utils/constants';
 import { FRONT_OFFICE_ROLES } from '../../utils/permissions';
 import useAuth from '../../hooks/useAuth';
-import { shiftsApi, staffApi, ApiShiftHandover, ApiEmployee } from '../../services/api';
+import usePagedList from '../../hooks/usePagedList';
+import { shiftsApi, staffApi, ApiShiftHandover, ApiEmployee, ShiftLiveSummary } from '../../services/api';
 
 interface ShiftHandoverScreenProps {
   onClose: () => void;
@@ -42,8 +44,7 @@ const formatDay = (iso: string) =>
 
 const ShiftHandoverScreen: React.FC<ShiftHandoverScreenProps> = ({ onClose }) => {
   const { user } = useAuth();
-  const [active, setActive] = useState<ApiShiftHandover | null>(null);
-  const [history, setHistory] = useState<ApiShiftHandover[]>([]);
+  const [active, setActive] = useState<(ApiShiftHandover & { live?: ShiftLiveSummary }) | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -51,15 +52,16 @@ const ShiftHandoverScreen: React.FC<ShiftHandoverScreenProps> = ({ onClose }) =>
   const [handoverTarget, setHandoverTarget] = useState<ApiEmployee | null>(null);
   const [handoverNotes, setHandoverNotes] = useState('');
   const [closeOpen, setCloseOpen] = useState(false);
-  const [closeForm, setCloseForm] = useState({ card: '', cash: '', notes: '' });
+  const [closeNotes, setCloseNotes] = useState('');
   const [busy, setBusy] = useState(false);
   const [detail, setDetail] = useState<ApiShiftHandover | null>(null);
 
-  const load = useCallback(async () => {
+  /* Kapanmış mesailer sayfa sayfa (en yeni önce) */
+  const history = usePagedList((page, pageSize) => shiftsApi.getPage({ page, pageSize, status: 'closed' }), [], 20);
+
+  const loadActive = useCallback(async () => {
     try {
-      const [act, all] = await Promise.all([shiftsApi.getActive(), shiftsApi.getAll({ status: 'closed' })]);
-      setActive(act);
-      setHistory(all);
+      setActive(await shiftsApi.getActive());
     } catch (err) {
       Alert.alert('Hata', (err as Error).message || 'Mesai kayıtları yüklenemedi');
     } finally {
@@ -67,7 +69,11 @@ const ShiftHandoverScreen: React.FC<ShiftHandoverScreenProps> = ({ onClose }) =>
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { loadActive(); }, [loadActive]);
+
+  const load = async () => {
+    await Promise.all([loadActive(), history.refresh()]);
+  };
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -109,18 +115,20 @@ const ShiftHandoverScreen: React.FC<ShiftHandoverScreenProps> = ({ onClose }) =>
     }
   };
 
+  /* Kapatma penceresi açılırken canlı özeti tazele (kaydedilecek tutarlar güncel görünsün) */
+  const openClose = async () => {
+    setCloseNotes('');
+    setCloseOpen(true);
+    try {
+      setActive(await shiftsApi.getActive());
+    } catch { /* eski özet gösterilir */ }
+  };
+
   const confirmClose = async () => {
     if (!active) return;
-    for (const v of [closeForm.card, closeForm.cash]) {
-      if (v.trim() && !isAmountText(v)) { Alert.alert('Uyarı', 'Kart / nakit tutarını doğru girin (ör. 1250,50).'); return; }
-    }
     setBusy(true);
     try {
-      await shiftsApi.close(active.id, {
-        cardSales: closeForm.card.trim() ? parseAmount(closeForm.card) : 0,
-        cashSales: closeForm.cash.trim() ? parseAmount(closeForm.cash) : 0,
-        notes: closeForm.notes.trim() || undefined,
-      });
+      await shiftsApi.close(active.id, { notes: closeNotes.trim() || undefined });
       setCloseOpen(false);
       await load();
     } catch (err) {
@@ -131,7 +139,7 @@ const ShiftHandoverScreen: React.FC<ShiftHandoverScreenProps> = ({ onClose }) =>
   };
 
   /* Geçmiş — gün gün */
-  const grouped = history.reduce<Record<string, ApiShiftHandover[]>>((acc, sh) => {
+  const grouped = history.items.reduce<Record<string, ApiShiftHandover[]>>((acc, sh) => {
     const day = (sh.startTime || '').slice(0, 10);
     (acc[day] = acc[day] || []).push(sh);
     return acc;
@@ -164,6 +172,12 @@ const ShiftHandoverScreen: React.FC<ShiftHandoverScreenProps> = ({ onClose }) =>
                 <Text style={styles.activeNames}>{active.fromUser} → {active.toUser}</Text>
                 <Text style={styles.meta}>Başlangıç: {formatDateTime(active.startTime)}</Text>
                 {!!active.notes && <Text style={styles.notes}>"{active.notes}"</Text>}
+                {active.live && (
+                  <View style={styles.liveBox}>
+                    <Text style={styles.liveTitle}>Mesai başından bu yana (otomatik)</Text>
+                    <SalesRows summary={active.live} />
+                  </View>
+                )}
               </>
             ) : (
               <Text style={styles.meta}>Aktif mesai yok.</Text>
@@ -174,15 +188,15 @@ const ShiftHandoverScreen: React.FC<ShiftHandoverScreenProps> = ({ onClose }) =>
                 title="Mesaiyi Kapat"
                 icon="stop-circle-outline"
                 variant="outline"
-                onPress={() => { setCloseForm({ card: '', cash: '', notes: '' }); setCloseOpen(true); }}
+                onPress={openClose}
                 disabled={busy}
                 style={{ marginTop: spacing.sm }}
               />
             )}
           </AppCard>
 
-          <Text style={styles.historyTitle}>Geçmiş Mesailer</Text>
-          {days.length === 0 && <EmptyState icon="time-outline" title="Kapanmış mesai yok" />}
+          <Text style={styles.historyTitle}>Geçmiş Mesailer{history.total ? ` (${history.total})` : ''}</Text>
+          {days.length === 0 && !history.loading && <EmptyState icon="time-outline" title="Kapanmış mesai yok" />}
           {days.map((day) => (
             <View key={day}>
               <Text style={styles.dayLabel}>{formatDay(day)}</Text>
@@ -199,6 +213,16 @@ const ShiftHandoverScreen: React.FC<ShiftHandoverScreenProps> = ({ onClose }) =>
               ))}
             </View>
           ))}
+          {history.hasMore && (
+            <AppButton
+              title="Daha fazla göster"
+              variant="outline"
+              icon="chevron-down-outline"
+              onPress={history.loadMore}
+              loading={history.loadingMore}
+              style={{ marginTop: spacing.sm }}
+            />
+          )}
         </ScrollView>
       )}
 
@@ -238,9 +262,12 @@ const ShiftHandoverScreen: React.FC<ShiftHandoverScreenProps> = ({ onClose }) =>
         <View style={styles.modalOverlay}>
           <View style={styles.modalBox}>
             <Text style={styles.modalTitle}>Mesaiyi Kapat</Text>
-            <AppInput label="Kart satışı (₺)" value={closeForm.card} onChangeText={(v) => setCloseForm((p) => ({ ...p, card: v }))} keyboardType="decimal-pad" />
-            <AppInput label="Nakit satışı (₺)" value={closeForm.cash} onChangeText={(v) => setCloseForm((p) => ({ ...p, cash: v }))} keyboardType="decimal-pad" />
-            <AppInput label="Not" value={closeForm.notes} onChangeText={(v) => setCloseForm((p) => ({ ...p, notes: v }))} multiline />
+            <Text style={[styles.meta, { marginBottom: spacing.sm }]}>
+              Tutarlar mesai süresince alınan ödemelerden ve cari tahsilatlarından otomatik hesaplanır.
+              Kasayı nakit tutarla karşılaştırın.
+            </Text>
+            {active?.live && <SalesRows summary={active.live} />}
+            <AppInput label="Not (opsiyonel)" value={closeNotes} onChangeText={setCloseNotes} multiline />
             <View style={styles.modalActions}>
               <AppButton title="Vazgeç" variant="outline" onPress={() => setCloseOpen(false)} disabled={busy} style={{ flex: 1 }} />
               <AppButton title="Kapat" variant="danger" onPress={confirmClose} loading={busy} style={{ flex: 1 }} />
@@ -258,10 +285,7 @@ const ShiftHandoverScreen: React.FC<ShiftHandoverScreenProps> = ({ onClose }) =>
               <>
                 <Text style={styles.histNames}>{detail.fromUser} → {detail.toUser}</Text>
                 <Text style={[styles.meta, { marginBottom: spacing.sm }]}>{formatDateTime(detail.startTime)} – {formatDateTime(detail.endTime)}</Text>
-                <InfoRow label="Kart Satışı" value={money(detail.cardSales)} />
-                <InfoRow label="Nakit Satışı" value={money(detail.cashSales)} />
-                <InfoRow label="Toplam Satış (folio)" value={money(detail.totalSales)} />
-                <InfoRow label="Satılan Oda" value={String(detail.roomsSold)} />
+                <SalesRows summary={detail} />
                 <InfoRow label="Dolu / Boş Oda" value={`${detail.roomsOccupied} / ${detail.roomsAvailable}`} />
                 {!!detail.notes && <Text style={styles.notes}>"{detail.notes}"</Text>}
               </>
@@ -273,6 +297,19 @@ const ShiftHandoverScreen: React.FC<ShiftHandoverScreenProps> = ({ onClose }) =>
     </View>
   );
 };
+
+/** Satış / tahsilat özeti satırları (canlı özet ve kapanmış mesai için ortak) */
+const SalesRows: React.FC<{
+  summary: Pick<ShiftLiveSummary, 'totalSales' | 'cashSales' | 'cardSales' | 'roomsSold'> & { otherSales?: string };
+}> = ({ summary }) => (
+  <>
+    <InfoRow label="Toplam Satış (folio)" value={money(summary.totalSales)} />
+    <InfoRow label="Nakit Tahsilat" value={money(summary.cashSales)} />
+    <InfoRow label="Kart Tahsilat" value={money(summary.cardSales)} />
+    <InfoRow label="Havale / Diğer" value={money(summary.otherSales || 0)} />
+    <InfoRow label="Satılan Oda" value={String(summary.roomsSold)} />
+  </>
+);
 
 const InfoRow: React.FC<{ label: string; value: string }> = ({ label, value }) => (
   <View style={styles.infoRow}>
@@ -317,6 +354,8 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.md, borderWidth: 1, borderColor: colors.border, marginBottom: 6,
   },
   staffRowSelected: { borderColor: colors.primary, backgroundColor: colors.primary + '10' },
+  liveBox: { marginTop: spacing.sm, paddingTop: spacing.sm, borderTopWidth: 1, borderTopColor: colors.divider },
+  liveTitle: { fontSize: fontSize.xs, fontWeight: '700', color: colors.textSecondary, textTransform: 'uppercase' },
 });
 
 export default ShiftHandoverScreen;

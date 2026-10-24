@@ -87,6 +87,20 @@ export const PAYMENT_METHOD_LABELS: Record<string, string> = {
   [PAYMENT_METHODS.ROOM_CHARGE]: 'Odaya Yansıt',
 };
 
+/* ==================== FOLIO / CARİ TAHSİLAT YÖNTEMLERİ ==================== */
+
+/** Backend FolioItem.PAYMENT_METHOD_CHOICES / ledger.PAYMENT_METHODS (web ile aynı) */
+export const FOLIO_PAYMENT_METHODS: readonly LabelValueOption[] = [
+  { value: 'cash', label: 'Nakit' },
+  { value: 'card', label: 'Kredi Kartı' },
+  { value: 'transfer', label: 'Havale/EFT' },
+  { value: 'other', label: 'Diğer' },
+];
+
+export const FOLIO_PAYMENT_METHOD_LABELS: Record<string, string> = Object.fromEntries(
+  FOLIO_PAYMENT_METHODS.map((m) => [m.value, m.label]),
+);
+
 /* ==================== ARIZA DURUMLARI ==================== */
 
 export const FAULT_STATUS = {

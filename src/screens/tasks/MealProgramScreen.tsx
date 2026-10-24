@@ -17,7 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { AppCard, AppInput, AppButton } from '../../components/common';
 import useAuth from '../../hooks/useAuth';
-import { colors, spacing, fontSize, borderRadius } from '../../theme';
+import { colors, spacing, fontSize } from '../../theme';
 import { ROLES } from '../../utils/constants';
 
 interface MealDay {

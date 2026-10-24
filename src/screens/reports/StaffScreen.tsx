@@ -21,11 +21,10 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { AppCard, StatusChip } from '../../components/common';
 import { colors, spacing, fontSize, borderRadius } from '../../theme';
-import { ROLE_LABELS, LEAVE_TYPE_LABELS, LEAVE_STATUS_LABELS, LEAVE_STATUS_COLORS } from '../../utils/constants';
+import { LEAVE_TYPE_LABELS, LEAVE_STATUS_LABELS, LEAVE_STATUS_COLORS } from '../../utils/constants';
 import { getYearsOfService } from '../../utils/leaveCalculator';
 import { staffApi, leavesApi, attendanceApi } from '../../services/api';
 import type { ApiEmployee, ApiLeave, ApiAttendanceLog } from '../../services/api';
-import useAuth from '../../hooks/useAuth';
 import EmployeeAddModal from './EmployeeAddModal';
 import LeaveGrantModal from '../../components/employees/LeaveGrantModal';
 
@@ -37,7 +36,6 @@ const StaffScreen: React.FC<StaffScreenProps> = ({ onClose }) => {
   const [staff, setStaff] = useState<ApiEmployee[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const { user } = useAuth();
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<ApiEmployee | null>(null);
@@ -757,7 +755,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.textPrimary,
     width: 44,
-    fontVariantNumeric: 'tabular-nums',
+    fontVariant: ['tabular-nums'],
   },
   attendanceStatusBadge: {
     paddingHorizontal: 6,
@@ -778,13 +776,13 @@ const styles = StyleSheet.create({
     fontSize: fontSize.xs,
     fontWeight: '600',
     color: colors.textPrimary,
-    fontVariantNumeric: 'tabular-nums',
+    fontVariant: ['tabular-nums'],
   },
   attendanceHours: {
     fontSize: fontSize.xs,
     fontWeight: '700',
     color: colors.textSecondary,
-    fontVariantNumeric: 'tabular-nums',
+    fontVariant: ['tabular-nums'],
   },
 });
 

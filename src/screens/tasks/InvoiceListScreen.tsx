@@ -1,7 +1,7 @@
 /**
  * InvoiceListScreen — Fatura Listesi + Fatura Detayı
  *
- * Liste: durum filtresi + müşteri / fatura no araması.
+ * Liste: durum filtresi + müşteri / fatura no / VKN araması (sunucuda), sonsuz kaydırma.
  * Detay: belge bilgileri, müşteri, kalemler, toplamlar; işlemler:
  *   - PDF görüntüle (tamamlanan)
  *   - Tekrar Gönder (taslak / hatalı → Paraşüt)
@@ -9,14 +9,16 @@
  *   - İptal (sadece taslak / hatalı — resmîleşmiş belge Paraşüt'ten iptal edilir)
  * Web karşılığı: pages/invoices/InvoiceList.tsx
  *
- * API: invoicesApi.list / get / send / checkStatus / cancel
+ * API: invoicesApi.listPage / get / send / checkStatus / cancel
  */
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, ScrollView, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
-import { AppCard, AppButton, AppInput, StatusChip, EmptyState, LoadingState } from '../../components/common';
+import { AppCard, AppButton, AppInput, StatusChip, EmptyState, LoadingState, LoadMoreFooter } from '../../components/common';
+import usePagedList from '../../hooks/usePagedList';
+import useDebouncedValue from '../../hooks/useDebouncedValue';
 import InvoicePdfModal from '../../components/tasks/InvoicePdfModal';
 import { colors, spacing, fontSize, borderRadius } from '../../theme';
 import {
@@ -44,35 +46,21 @@ const formatDate = (d: string | null | undefined) =>
   d ? new Date(d).toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—';
 
 const InvoiceListScreen: React.FC<InvoiceListScreenProps> = ({ onClose }) => {
-  const [invoices, setInvoices] = useState<ApiInvoice[]>([]);
   const [status, setStatus] = useState('all');
   const [query, setQuery] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const search = useDebouncedValue(query.trim());
 
   const [selected, setSelected] = useState<ApiInvoice | null>(null);
   const [busy, setBusy] = useState(false);
   const [showPdf, setShowPdf] = useState(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      setInvoices(await invoicesApi.list(status === 'all' ? undefined : { status }));
-    } catch (err) {
-      Alert.alert('Hata', (err as Error).message || 'Faturalar yüklenemedi');
-      setInvoices([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [status]);
-
-  useEffect(() => { load(); }, [load]);
-
-  const onRefresh = async () => {
-    setRefreshing(true);
-    await load();
-    setRefreshing(false);
-  };
+  /* Faturalar sayfa sayfa; durum / arama değişince baştan */
+  const list = usePagedList(
+    (page, pageSize) => invoicesApi.listPage({
+      page, pageSize, status: status === 'all' ? undefined : status, search: search || undefined,
+    }),
+    [status, search],
+  );
 
   /* Detaydaki işlemler — sonuç faturası ekranda ve listede güncellenir */
   const runAction = async (action: () => Promise<ApiInvoice>, successMessage?: (inv: ApiInvoice) => string) => {
@@ -80,7 +68,7 @@ const InvoiceListScreen: React.FC<InvoiceListScreenProps> = ({ onClose }) => {
     try {
       const updated = await action();
       setSelected(updated);
-      setInvoices((prev) => prev.map((i) => (i.id === updated.id ? updated : i)));
+      list.setItems((prev) => prev.map((i) => (i.id === updated.id ? updated : i)));
       if (successMessage) Alert.alert('Fatura', successMessage(updated));
     } catch (err) {
       Alert.alert('Hata', (err as Error).message || 'İşlem yapılamadı');
@@ -195,10 +183,6 @@ const InvoiceListScreen: React.FC<InvoiceListScreenProps> = ({ onClose }) => {
   }
 
   /* ─── LİSTE ─── */
-  const q = query.trim().toLocaleLowerCase('tr');
-  const visible = q
-    ? invoices.filter((i) => `${i.invoiceNo} ${i.customerName} ${i.taxNumber}`.toLocaleLowerCase('tr').includes(q))
-    : invoices;
 
   return (
     <View style={styles.container}>
@@ -219,15 +203,18 @@ const InvoiceListScreen: React.FC<InvoiceListScreenProps> = ({ onClose }) => {
         <AppInput value={query} onChangeText={setQuery} placeholder="Müşteri, fatura no veya vergi no ara..." icon="search-outline" style={{ marginBottom: 0 }} />
       </View>
 
-      {loading && !refreshing ? (
+      {list.loading && list.items.length === 0 ? (
         <LoadingState message="Faturalar yükleniyor..." />
       ) : (
         <FlatList
-          data={visible}
+          data={list.items}
           keyExtractor={(i) => String(i.id)}
           contentContainerStyle={styles.list}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[colors.primary]} />}
-          ListEmptyComponent={<EmptyState icon="receipt-outline" title="Fatura bulunamadı" />}
+          refreshControl={<RefreshControl refreshing={list.refreshing} onRefresh={list.refresh} colors={[colors.primary]} />}
+          onEndReached={list.loadMore}
+          onEndReachedThreshold={0.4}
+          ListFooterComponent={<LoadMoreFooter loading={list.loadingMore} />}
+          ListEmptyComponent={<EmptyState icon="receipt-outline" title={list.error || 'Fatura bulunamadı'} />}
           renderItem={({ item }) => (
             <AppCard style={styles.itemCard} onPress={() => setSelected(item)}>
               <View style={styles.cardTop}>

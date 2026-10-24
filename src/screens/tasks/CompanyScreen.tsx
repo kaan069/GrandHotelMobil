@@ -3,10 +3,10 @@
  *
  * İki görünüm:
  *   1. Tümü — standart firma listesi + ekleme/silme
- *   2. Borçlu — bakiyesi olan firmalar (toplam, ödenen, bakiye)
+ *   2. Borçlu — cari bakiyesi > 0 olan firmalar (cari defter; Borçlular ekranıyla aynı kaynak)
  *
- * Firma detayında: firma bilgileri + kayıtlı misafirler
- * Borçlu firma detayında: borç özeti + rezervasyon listesi + folio kalemleri
+ * Firma detayında: firma bilgileri + açık borç kutucukları (konaklama başına, seçip tahsilat) +
+ * cari hesap ekstresi (geçmiş, avans tahsilatı, iptal) + kayıtlı misafirler
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -23,12 +23,13 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
-import { AppCard, AppButton, AppInput, EmptyState, LoadingState, PromptModal, parseAmount } from '../../components/common';
+import { AppCard, AppButton, AppInput, EmptyState, LoadingState } from '../../components/common';
+import CariStatement from '../../components/cari/CariStatement';
+import DebtCards from '../../components/cari/DebtCards';
 import { colors, spacing, fontSize, borderRadius } from '../../theme';
-import { deferAlert } from '../../utils/alert';
 import useApi from '../../hooks/useApi';
-import useAuth from '../../hooks/useAuth';
 import { companiesApi } from '../../services/api';
+import type { CariDebtorRow } from '../../services/api';
 import type { Company, Guest } from '../../utils/types';
 
 interface CompanyScreenProps {
@@ -41,19 +42,20 @@ const formatCurrency = (amount: number): string =>
   `₺${amount.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 const CompanyScreen: React.FC<CompanyScreenProps> = ({ onClose }) => {
-  const { user } = useAuth();
   const { data: companies, loading, refetch } = useApi(() => companiesApi.getAll());
 
   const [filter, setFilter] = useState<FilterType>('all');
-  const [debtors, setDebtors] = useState<any[]>([]);
+  const [debtors, setDebtors] = useState<CariDebtorRow[]>([]);
   const [debtorsLoading, setDebtorsLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
   /* Detay state */
   const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
   const [companyGuests, setCompanyGuests] = useState<Guest[]>([]);
-  const [debtDetail, setDebtDetail] = useState<any>(null);
-  const [loadingDetail, setLoadingDetail] = useState(false);
+  const [loadingGuests, setLoadingGuests] = useState(false);
+  /* Borç kutucukları ve ekstre: biri değişince diğeri yeniden yüklenir */
+  const [debtsReload, setDebtsReload] = useState(0);
+  const [statementReload, setStatementReload] = useState(0);
 
   /* Form state */
   const [showAddModal, setShowAddModal] = useState(false);
@@ -105,28 +107,23 @@ const CompanyScreen: React.FC<CompanyScreenProps> = ({ onClose }) => {
     finally { setSaving(false); }
   };
 
-  /* Firma detay (tüm firmalar) */
+  /* Firma detay — cari ekstreyi CariStatement kendisi yükler */
   const handleSelectCompany = async (company: Company) => {
     setSelectedCompany(company);
-    setDebtDetail(null);
-    setLoadingDetail(true);
+    setCompanyGuests([]);
+    setLoadingGuests(true);
     try {
-      const guests = await companiesApi.getGuests(company.id);
-      setCompanyGuests(guests);
+      setCompanyGuests(await companiesApi.getGuests(company.id));
     } catch { setCompanyGuests([]); }
-    finally { setLoadingDetail(false); }
+    finally { setLoadingGuests(false); }
   };
 
-  /* Borçlu firma detay */
-  const handleSelectDebtor = async (debtor: any) => {
-    setSelectedCompany({ id: debtor.id, name: debtor.name, taxNumber: debtor.taxNumber, phone: debtor.phone, email: debtor.email, address: null });
-    setLoadingDetail(true);
-    try {
-      const detail = await companiesApi.getDebtDetail(debtor.id);
-      setDebtDetail(detail);
-      setCompanyGuests([]);
-    } catch { setDebtDetail(null); }
-    finally { setLoadingDetail(false); }
+  const handleSelectDebtor = (debtor: CariDebtorRow) => {
+    const company = companies?.find((c) => c.id === debtor.id);
+    handleSelectCompany(company || {
+      id: debtor.id, name: debtor.name, taxNumber: debtor.taxNumber, phone: debtor.phone,
+      email: debtor.email, address: debtor.address ?? null,
+    });
   };
 
   /* Firma sil */
@@ -141,30 +138,6 @@ const CompanyScreen: React.FC<CompanyScreenProps> = ({ onClose }) => {
         },
       },
     ]);
-  };
-
-  /* Ödeme ekle — borç kapat (PromptModal: Alert.prompt Android'de çalışmaz) */
-  const [paymentTarget, setPaymentTarget] = useState<{ rezId: number; roomNumber: string; balance: number } | null>(null);
-  const handleAddPayment = (rezId: number, rezRoomNumber: string, rezBalance: number) => {
-    setPaymentTarget({ rezId, roomNumber: rezRoomNumber, balance: rezBalance });
-  };
-  const submitPayment = async (value: string) => {
-    if (!paymentTarget || !selectedCompany) return;
-    const amount = parseAmount(value);
-    await companiesApi.addPayment(selectedCompany.id, {
-      reservationId: paymentTarget.rezId,
-      amount,
-      description: 'Firma ödemesi',
-      staffName: user?.name || '',
-    });
-    deferAlert('Başarılı', `${formatCurrency(amount)} ödeme kaydedildi.`);
-    const detail = await companiesApi.getDebtDetail(selectedCompany.id);
-    setDebtDetail(detail);
-  };
-
-  const formatDate = (d: string | null) => {
-    if (!d) return '—';
-    return new Date(d).toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' });
   };
 
   /* ── Yükleniyor ── */
@@ -186,7 +159,7 @@ const CompanyScreen: React.FC<CompanyScreenProps> = ({ onClose }) => {
     return (
       <View style={styles.container}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => { setSelectedCompany(null); setDebtDetail(null); }}>
+          <TouchableOpacity onPress={() => setSelectedCompany(null)}>
             <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
           </TouchableOpacity>
           <Text style={styles.title} numberOfLines={1}>{selectedCompany.name}</Text>
@@ -195,146 +168,56 @@ const CompanyScreen: React.FC<CompanyScreenProps> = ({ onClose }) => {
           </TouchableOpacity>
         </View>
 
-        {loadingDetail ? (
-          <LoadingState message="Detaylar yükleniyor..." />
-        ) : (
-          <ScrollView contentContainerStyle={styles.detailContent}>
-            {/* Firma bilgileri */}
-            <AppCard style={styles.card}>
-              <View style={styles.sectionHeader}>
-                <Ionicons name="business" size={20} color={colors.primary} />
-                <Text style={styles.sectionTitle}>Firma Bilgileri</Text>
-              </View>
-              {selectedCompany.taxNumber && <Text style={styles.infoRow}>Vergi No: {selectedCompany.taxNumber}</Text>}
-              {selectedCompany.phone && <Text style={styles.infoRow}>Telefon: {selectedCompany.phone}</Text>}
-              {selectedCompany.email && <Text style={styles.infoRow}>E-posta: {selectedCompany.email}</Text>}
-            </AppCard>
+        <ScrollView contentContainerStyle={styles.detailContent}>
+          {/* Firma bilgileri */}
+          <AppCard style={styles.card}>
+            <View style={styles.sectionHeader}>
+              <Ionicons name="business" size={20} color={colors.primary} />
+              <Text style={styles.sectionTitle}>Firma Bilgileri</Text>
+            </View>
+            {selectedCompany.taxNumber && <Text style={styles.infoRow}>Vergi No: {selectedCompany.taxNumber}</Text>}
+            {selectedCompany.phone && <Text style={styles.infoRow}>Telefon: {selectedCompany.phone}</Text>}
+            {selectedCompany.email && <Text style={styles.infoRow}>E-posta: {selectedCompany.email}</Text>}
+          </AppCard>
 
-            {/* ── Borç detayı (borçlu firma seçildiyse) ── */}
-            {debtDetail && (
-              <>
-                {/* Borç özeti */}
-                <AppCard style={[styles.card, { borderLeftWidth: 4, borderLeftColor: colors.error }]}>
-                  <View style={styles.sectionHeader}>
-                    <Ionicons name="alert-circle" size={20} color={colors.error} />
-                    <Text style={styles.sectionTitle}>Borç Durumu</Text>
+          {/* Açık borçlar — konaklama başına kutucuk, seçip tahsilat */}
+          <DebtCards
+            target={{ company: selectedCompany.id }}
+            reloadToken={debtsReload}
+            onChanged={() => { setStatementReload((t) => t + 1); if (filter === 'debtors') loadDebtors(); }}
+          />
+
+          {/* Cari hesap ekstresi (geçmiş, avans tahsilatı, iptal) */}
+          <CariStatement
+            kind="company"
+            partyId={selectedCompany.id}
+            reloadToken={statementReload}
+            onChanged={() => { setDebtsReload((t) => t + 1); if (filter === 'debtors') loadDebtors(); }}
+          />
+
+          {/* Kayıtlı misafirler */}
+          <AppCard style={styles.card}>
+            <View style={styles.sectionHeader}>
+              <Ionicons name="people" size={20} color={colors.primary} />
+              <Text style={styles.sectionTitle}>Kayıtlı Misafirler ({companyGuests.length})</Text>
+            </View>
+            {loadingGuests ? (
+              <Text style={styles.emptyText}>Yükleniyor...</Text>
+            ) : companyGuests.length > 0 ? (
+              companyGuests.map((guest) => (
+                <View key={guest.id} style={styles.guestRow}>
+                  <Ionicons name="person-circle-outline" size={28} color={colors.primary} />
+                  <View style={styles.guestInfo}>
+                    <Text style={styles.guestName}>{guest.firstName} {guest.lastName}</Text>
+                    <Text style={styles.guestDetail}>TC: {guest.tcNo} · {guest.phone}</Text>
                   </View>
-                  <View style={styles.debtSummaryRow}>
-                    <View style={styles.debtItem}>
-                      <Text style={styles.debtLabel}>Toplam</Text>
-                      <Text style={styles.debtValue}>{formatCurrency(Number(debtDetail.summary.totalAmount))}</Text>
-                    </View>
-                    <View style={styles.debtItem}>
-                      <Text style={styles.debtLabel}>Ödenen</Text>
-                      <Text style={[styles.debtValue, { color: colors.success }]}>{formatCurrency(Number(debtDetail.summary.paidAmount))}</Text>
-                    </View>
-                    <View style={styles.debtItem}>
-                      <Text style={styles.debtLabel}>Bakiye</Text>
-                      <Text style={[styles.debtValue, { color: colors.error, fontSize: fontSize.xl }]}>
-                        {formatCurrency(Number(debtDetail.summary.balance))}
-                      </Text>
-                    </View>
-                  </View>
-                </AppCard>
-
-                {/* Rezervasyonlar */}
-                <View style={styles.sectionHeader}>
-                  <Ionicons name="bed" size={20} color={colors.primary} />
-                  <Text style={styles.sectionTitle}>Konaklamalar ({debtDetail.reservations.length})</Text>
                 </View>
-                {debtDetail.reservations.map((rez: any) => (
-                  <AppCard key={rez.id} style={styles.card}>
-                    <View style={styles.rezHeader}>
-                      <View style={styles.roomBadge}>
-                        <Text style={styles.roomBadgeText}>{rez.roomNumber}</Text>
-                      </View>
-                      <View style={[styles.statusBadge, { backgroundColor: rez.isActive ? colors.success + '20' : colors.textDisabled + '20' }]}>
-                        <Text style={[styles.statusText, { color: rez.isActive ? colors.success : colors.textDisabled }]}>
-                          {rez.isActive ? 'Aktif' : 'Tamamlandı'}
-                        </Text>
-                      </View>
-                    </View>
-                    {rez.guestNames && <Text style={styles.rezGuest}>{rez.guestNames}</Text>}
-                    <Text style={styles.rezDate}>
-                      {formatDate(rez.checkIn)} → {formatDate(rez.checkOut)}
-                    </Text>
-                    <View style={styles.rezAmounts}>
-                      <Text style={styles.rezAmountLabel}>Tutar: {formatCurrency(Number(rez.totalAmount))}</Text>
-                      <Text style={styles.rezAmountLabel}>Ödenen: {formatCurrency(Number(rez.paidAmount))}</Text>
-                      {Number(rez.balance) > 0 && (
-                        <Text style={[styles.rezAmountLabel, { color: colors.error, fontWeight: '700' }]}>
-                          Bakiye: {formatCurrency(Number(rez.balance))}
-                        </Text>
-                      )}
-                    </View>
-                    {/* Folio kalemleri */}
-                    {rez.folioItems.length > 0 && (
-                      <View style={styles.folioSection}>
-                        {rez.folioItems.map((f: any) => (
-                          <View key={f.id} style={styles.folioRow}>
-                            <Text style={styles.folioDesc} numberOfLines={1}>{f.description}</Text>
-                            <Text style={styles.folioAmount}>{formatCurrency(f.amount)}</Text>
-                          </View>
-                        ))}
-                      </View>
-                    )}
-                    {/* Ödeme butonu — bakiye varsa göster */}
-                    {Number(rez.balance) > 0 && (
-                      <AppButton
-                        title="Ödeme Ekle"
-                        icon="cash-outline"
-                        variant="outline"
-                        onPress={() => handleAddPayment(rez.id, rez.roomNumber, Number(rez.balance))}
-                        style={{ marginTop: spacing.sm }}
-                      />
-                    )}
-                  </AppCard>
-                ))}
-              </>
+              ))
+            ) : (
+              <Text style={styles.emptyText}>Bu firmaya kayıtlı misafir yok</Text>
             )}
-
-            {/* ── Normal firma detayı (misafirler) ── */}
-            {!debtDetail && (
-              <AppCard style={styles.card}>
-                <View style={styles.sectionHeader}>
-                  <Ionicons name="people" size={20} color={colors.primary} />
-                  <Text style={styles.sectionTitle}>Kayıtlı Misafirler ({companyGuests.length})</Text>
-                </View>
-                {companyGuests.length > 0 ? (
-                  companyGuests.map((guest) => (
-                    <View key={guest.id} style={styles.guestRow}>
-                      <Ionicons name="person-circle-outline" size={28} color={colors.primary} />
-                      <View style={styles.guestInfo}>
-                        <Text style={styles.guestName}>{guest.firstName} {guest.lastName}</Text>
-                        <Text style={styles.guestDetail}>TC: {guest.tcNo} · {guest.phone}</Text>
-                      </View>
-                    </View>
-                  ))
-                ) : (
-                  <Text style={styles.emptyText}>Bu firmaya kayıtlı misafir yok</Text>
-                )}
-              </AppCard>
-            )}
-          </ScrollView>
-        )}
-
-        <PromptModal
-          visible={!!paymentTarget}
-          title="Ödeme Ekle"
-          message={paymentTarget ? `Oda ${paymentTarget.roomNumber} — Bakiye: ${formatCurrency(paymentTarget.balance)}` : undefined}
-          placeholder="Ödeme tutarı"
-          initialValue={paymentTarget ? String(paymentTarget.balance) : ''}
-          keyboardType="decimal-pad"
-          confirmText="Ödeme Yap"
-          validate={(v) => {
-            const amount = parseAmount(v);
-            if (amount <= 0) return 'Geçerli bir tutar girin';
-            if (paymentTarget && amount > paymentTarget.balance + 0.001) return 'Tutar bakiyeden büyük olamaz';
-            return null;
-          }}
-          onConfirm={submitPayment}
-          onClose={() => setPaymentTarget(null)}
-        />
+          </AppCard>
+        </ScrollView>
       </View>
     );
   }
@@ -417,7 +300,9 @@ const CompanyScreen: React.FC<CompanyScreenProps> = ({ onClose }) => {
                   </View>
                   <View style={styles.companyInfo}>
                     <Text style={styles.companyName}>{item.name}</Text>
-                    <Text style={styles.companyDetail}>{item.reservationCount} rezervasyon · {item.activeReservations} aktif</Text>
+                    <Text style={styles.companyDetail}>
+                      {item.openCount} açık borç{item.activeReservations > 0 ? ` · ${item.activeReservations} konaklayan` : ''}
+                    </Text>
                   </View>
                   <View style={styles.debtBadge}>
                     <Text style={styles.debtBadgeText}>{formatCurrency(Number(item.balance))}</Text>
@@ -496,23 +381,6 @@ const styles = StyleSheet.create({
   sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: spacing.md },
   sectionTitle: { fontSize: fontSize.md, fontWeight: '700', color: colors.textPrimary },
   infoRow: { fontSize: fontSize.sm, color: colors.textSecondary, marginBottom: 6 },
-  debtSummaryRow: { flexDirection: 'row', gap: spacing.sm },
-  debtItem: { flex: 1, alignItems: 'center', paddingVertical: spacing.sm, backgroundColor: colors.divider, borderRadius: borderRadius.sm },
-  debtLabel: { fontSize: fontSize.xs, color: colors.textSecondary, marginBottom: 4 },
-  debtValue: { fontSize: fontSize.md, fontWeight: '700', color: colors.textPrimary },
-  rezHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
-  roomBadge: { backgroundColor: colors.primary + '15', paddingHorizontal: 10, paddingVertical: 4, borderRadius: borderRadius.sm },
-  roomBadgeText: { fontSize: fontSize.md, fontWeight: '800', color: colors.primary },
-  statusBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: borderRadius.sm },
-  statusText: { fontSize: fontSize.xs, fontWeight: '600' },
-  rezGuest: { fontSize: fontSize.sm, fontWeight: '600', color: colors.textPrimary, marginBottom: 4 },
-  rezDate: { fontSize: fontSize.xs, color: colors.textSecondary, marginBottom: 6 },
-  rezAmounts: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  rezAmountLabel: { fontSize: fontSize.xs, color: colors.textSecondary },
-  folioSection: { marginTop: spacing.sm, paddingTop: spacing.sm, borderTopWidth: 1, borderTopColor: colors.divider },
-  folioRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 },
-  folioDesc: { flex: 1, fontSize: fontSize.xs, color: colors.textSecondary },
-  folioAmount: { fontSize: fontSize.xs, fontWeight: '600', color: colors.textPrimary },
   guestRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.divider },
   guestInfo: { flex: 1 },
   guestName: { fontSize: fontSize.md, fontWeight: '600', color: colors.textPrimary },

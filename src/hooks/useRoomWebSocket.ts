@@ -29,7 +29,7 @@ interface UseRoomWebSocketOptions {
 
 export default function useRoomWebSocket({ onRoomUpdate, enabled = true }: UseRoomWebSocketOptions) {
   const wsRef = useRef<WebSocket | null>(null);
-  const reconnectTimer = useRef<ReturnType<typeof setTimeout>>();
+  const reconnectTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const onRoomUpdateRef = useRef(onRoomUpdate);
   onRoomUpdateRef.current = onRoomUpdate;
 

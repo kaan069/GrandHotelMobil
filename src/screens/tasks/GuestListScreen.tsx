@@ -1,20 +1,23 @@
 /**
  * GuestListScreen — Müşteri Listesi + Müşteri Detayı
  *
- * Liste: ad / TC / telefon ile sunucu tarafı arama (300ms debounce), kara liste filtresi.
+ * Liste: ad / TC / telefon ile sunucu tarafı arama (300ms debounce), kara liste filtresi,
+ * sonsuz kaydırma (sayfa sayfa).
  * Detay: kimlik bilgileri, firma, konaklama özeti (konaklama sayısı, gece, harcama,
  * ödeme, bakiye — iptal edilen rezervasyonlar sayılmaz) ve konaklama geçmişi.
  * Ön büro rolleri kara listeye alabilir / çıkarabilir.
  * Web karşılığı: pages/guests/GuestList.tsx + GuestDetail.tsx
  *
- * API: guestsApi.getAll / search / stayHistory / toggleBlock, companiesApi.getAll
+ * API: guestsApi.getPage / stayHistory / toggleBlock, companiesApi.getAll
  */
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, ScrollView, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
-import { AppCard, AppButton, AppInput, StatusChip, EmptyState, LoadingState } from '../../components/common';
+import { AppCard, AppButton, AppInput, StatusChip, EmptyState, LoadingState, LoadMoreFooter } from '../../components/common';
+import usePagedList from '../../hooks/usePagedList';
+import useDebouncedValue from '../../hooks/useDebouncedValue';
 import { colors, spacing, fontSize, borderRadius } from '../../theme';
 import { RESERVATION_STATUS, RESERVATION_STATUS_LABELS, RESERVATION_STATUS_COLORS } from '../../utils/constants';
 import { guestsApi, companiesApi } from '../../services/api';
@@ -42,46 +45,25 @@ const GuestListScreen: React.FC<GuestListScreenProps> = ({ onClose }) => {
   const { user } = useAuth();
   const canBlock = isFrontOffice(user);
 
-  const [guests, setGuests] = useState<Guest[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [query, setQuery] = useState('');
-  const [debounced, setDebounced] = useState('');
+  const debounced = useDebouncedValue(query.trim());
   const [onlyBlocked, setOnlyBlocked] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
 
   const [selected, setSelected] = useState<Guest | null>(null);
   const [history, setHistory] = useState<Reservation[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [blocking, setBlocking] = useState(false);
 
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => {
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => setDebounced(query.trim()), 300);
-    return () => { if (timer.current) clearTimeout(timer.current); };
-  }, [query]);
+  /* Müşteriler sayfa sayfa; arama ve kara liste filtresi sunucuda */
+  const list = usePagedList(
+    (page, pageSize) => guestsApi.getPage({
+      page, pageSize, search: debounced || undefined, isBlocked: onlyBlocked || undefined,
+    }),
+    [debounced, onlyBlocked],
+  );
 
-  const fetchGuests = useCallback(async () => {
-    setLoading(true);
-    try {
-      setGuests(debounced ? await guestsApi.search(debounced) : await guestsApi.getAll());
-    } catch (err) {
-      Alert.alert('Hata', (err as Error).message || 'Müşteriler yüklenemedi');
-      setGuests([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [debounced]);
-
-  useEffect(() => { fetchGuests(); }, [fetchGuests]);
   useEffect(() => { companiesApi.getAll().then(setCompanies).catch(() => setCompanies([])); }, []);
-
-  const onRefresh = async () => {
-    setRefreshing(true);
-    await fetchGuests();
-    setRefreshing(false);
-  };
 
   const openDetail = async (guest: Guest) => {
     setSelected(guest);
@@ -115,7 +97,7 @@ const GuestListScreen: React.FC<GuestListScreenProps> = ({ onClose }) => {
             try {
               const updated = await guestsApi.toggleBlock(selected.id);
               setSelected((prev) => (prev ? { ...prev, isBlocked: updated.isBlocked } : prev));
-              setGuests((prev) => prev.map((g) => (g.id === updated.id ? { ...g, isBlocked: updated.isBlocked } : g)));
+              list.setItems((prev) => prev.map((g) => (g.id === updated.id ? { ...g, isBlocked: updated.isBlocked } : g)));
             } catch (err) {
               Alert.alert('Hata', (err as Error).message || 'İşlem yapılamadı');
             } finally {
@@ -221,7 +203,6 @@ const GuestListScreen: React.FC<GuestListScreenProps> = ({ onClose }) => {
   }
 
   /* ─── LİSTE ─── */
-  const visible = onlyBlocked ? guests.filter((g) => g.isBlocked) : guests;
 
   return (
     <View style={styles.container}>
@@ -241,19 +222,22 @@ const GuestListScreen: React.FC<GuestListScreenProps> = ({ onClose }) => {
               <Text style={[styles.chipText, onlyBlocked === val && styles.chipTextActive]}>{label}</Text>
             </TouchableOpacity>
           ))}
-          <Text style={styles.countText}>{visible.length} müşteri</Text>
+          <Text style={styles.countText}>{list.total} müşteri</Text>
         </View>
       </View>
 
-      {loading && guests.length === 0 ? (
+      {list.loading && list.items.length === 0 ? (
         <LoadingState message="Müşteriler yükleniyor..." />
       ) : (
         <FlatList
-          data={visible}
+          data={list.items}
           keyExtractor={(g) => String(g.id)}
           contentContainerStyle={styles.list}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[colors.primary]} />}
-          ListEmptyComponent={<EmptyState icon="people-outline" title="Müşteri bulunamadı" />}
+          refreshControl={<RefreshControl refreshing={list.refreshing} onRefresh={list.refresh} colors={[colors.primary]} />}
+          onEndReached={list.loadMore}
+          onEndReachedThreshold={0.4}
+          ListFooterComponent={<LoadMoreFooter loading={list.loadingMore} />}
+          ListEmptyComponent={<EmptyState icon="people-outline" title={list.error || 'Müşteri bulunamadı'} />}
           renderItem={({ item }) => {
             const comp = companyName(item.companyId);
             return (

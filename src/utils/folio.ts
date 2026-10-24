@@ -5,13 +5,22 @@
  * Web tarafındaki `/web/src/utils/folio.ts` ile aynı semantiği taşır.
  */
 
+/** Borcu kapatır: ödeme veya borcun cariye aktarılması */
 export const PAYMENT_LIKE_CATEGORIES = new Set([
   'payment',
   'account_transfer_debit',
 ]);
 
+/** Cirodan düşer: indirim */
 export const DEDUCTION_CATEGORIES = new Set([
   'discount',
+]);
+
+/**
+ * Fazla ödemenin cariye alacak yazılması: folio bakiyesini ARTIRIR (fazla ödemeyi
+ * sıfırlar) ama ciro değildir. Backend CREDIT_TRANSFER_CATEGORIES ile aynı.
+ */
+export const CREDIT_TRANSFER_CATEGORIES = new Set([
   'account_transfer_credit',
 ]);
 
@@ -24,9 +33,11 @@ export interface FolioTotals {
   charges: number;
   discounts: number;
   payments: number;
-  /** total = charges - discounts. Müşterinin toplam borcu. */
+  /** Cariye alacak yazılan fazla ödeme */
+  creditTransfers: number;
+  /** total = charges - discounts. Müşterinin toplam borcu (ciro). */
   total: number;
-  /** balance = total - payments. >0 müşteri borçlu, <0 otel borçlu (iade). */
+  /** balance = total + creditTransfers - payments. >0 müşteri borçlu, <0 otel borçlu (iade). */
   balance: number;
 }
 
@@ -40,12 +51,15 @@ export const calcFolioTotals = (items: FolioItemLike[]): FolioTotals => {
   let charges = 0;
   let discounts = 0;
   let payments = 0;
+  let creditTransfers = 0;
   for (const item of items) {
     const amount = toNumber(item.amount);
     if (PAYMENT_LIKE_CATEGORIES.has(item.category)) {
       payments += amount;
     } else if (DEDUCTION_CATEGORIES.has(item.category)) {
       discounts += amount;
+    } else if (CREDIT_TRANSFER_CATEGORIES.has(item.category)) {
+      creditTransfers += amount;
     } else {
       charges += amount;
     }
@@ -55,8 +69,9 @@ export const calcFolioTotals = (items: FolioItemLike[]): FolioTotals => {
     charges,
     discounts,
     payments,
+    creditTransfers,
     total,
-    balance: total - payments,
+    balance: total + creditTransfers - payments,
   };
 };
 

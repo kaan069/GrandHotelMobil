@@ -6,7 +6,7 @@
  * Backend hazır olduğunda stream URL'leri API'den gelir.
  */
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,

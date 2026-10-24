@@ -16,16 +16,14 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
-  FlatList,
   RefreshControl,
-  SectionList,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 import { LoadingState, OptionPickerModal } from '../../components/common';
 import { colors, spacing, fontSize, borderRadius } from '../../theme';
 import { tablesApi, tabsApi, menuApi, reservationsApi } from '../../services/api';
-import type { ApiTable, ApiTab, ApiTabItem, ApiMenuCategory, ApiMenuItem } from '../../utils/types';
+import type { ApiTable, ApiTab, ApiMenuCategory, ApiMenuItem } from '../../utils/types';
 import type { Reservation } from '../../utils/types';
 import useAuth from '../../hooks/useAuth';
 import { hasAnyRole } from '../../utils/permissions';
@@ -364,8 +362,8 @@ const TableDetailScreen: React.FC<Props> = ({ table, onClose, onUpdate }) => {
               Ayrı ödenecek kalemleri seçin:
             </Text>
             <ScrollView style={{ maxHeight: 300 }}>
-              {items.map((item: Record<string, unknown>) => {
-                const id = item.id as number;
+              {items.map((item) => {
+                const id = item.id;
                 const checked = splitSelected.includes(id);
                 return (
                   <TouchableOpacity
@@ -384,7 +382,7 @@ const TableDetailScreen: React.FC<Props> = ({ table, onClose, onUpdate }) => {
                       color={checked ? colors.primary : colors.textDisabled}
                     />
                     <Text style={{ flex: 1, fontSize: 14, fontWeight: '600', color: colors.textPrimary }}>
-                      {item.quantity as number}x {item.description as string}
+                      {item.quantity}x {item.description}
                     </Text>
                     <Text style={{ fontSize: 14, fontWeight: '700', color: colors.textPrimary }}>
                       {Number(item.totalPrice).toFixed(0)} ₺
@@ -398,8 +396,8 @@ const TableDetailScreen: React.FC<Props> = ({ table, onClose, onUpdate }) => {
                 <Text style={{ fontWeight: '700', fontSize: 15 }}>Seçili Toplam:</Text>
                 <Text style={{ fontWeight: '700', fontSize: 15, color: colors.primary }}>
                   {items
-                    .filter((i: Record<string, unknown>) => splitSelected.includes(i.id as number))
-                    .reduce((s: number, i: Record<string, unknown>) => s + Number(i.totalPrice), 0)
+                    .filter((i) => splitSelected.includes(i.id))
+                    .reduce((sum, i) => sum + Number(i.totalPrice), 0)
                     .toFixed(0)} ₺
                 </Text>
               </View>
@@ -586,6 +584,11 @@ const styles = StyleSheet.create({
   },
   payBtnText: { color: '#fff', fontWeight: '700', fontSize: fontSize.md },
   /* Ödeme modal */
+  /* Hesap Böl penceresindeki tam genişlik butonlar (arka plan rengi satırda verilir) */
+  payMethodBtn: {
+    paddingVertical: 14, borderRadius: borderRadius.md, alignItems: 'center', justifyContent: 'center',
+  },
+  payMethodBtnText: { color: '#fff', fontWeight: '700', fontSize: fontSize.md },
   payOverlay: {
     position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
     backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center',

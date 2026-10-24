@@ -16,9 +16,9 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
-import { AppInput, AppButton } from '../common';
+import { AppInput, AppButton, parseAmount, isAmountText } from '../common';
 import { colors, spacing, fontSize, borderRadius } from '../../theme';
-import { FOLIO_CATEGORIES, PAYMENT_METHOD_LABELS } from '../../utils/constants';
+import { FOLIO_CATEGORIES, FOLIO_PAYMENT_METHODS } from '../../utils/constants';
 import type { FolioCategory } from '../../utils/types';
 
 interface FolioAddModalProps {
@@ -51,8 +51,9 @@ const FolioAddModal: React.FC<FolioAddModalProps> = ({ visible, onClose, onSave 
     const newErrors: Record<string, string> = {};
     if (!category) newErrors.category = 'Kategori seçin';
     if (!description.trim()) newErrors.description = 'Açıklama zorunlu';
-    const parsedAmount = parseFloat(amount);
-    if (!amount || isNaN(parsedAmount) || parsedAmount <= 0) newErrors.amount = 'Geçerli tutar girin';
+    // Türkçe yazım: "1.250,50" → 1250.5 (parseFloat 1.25 okurdu)
+    const parsedAmount = parseAmount(amount);
+    if (!isAmountText(amount) || parsedAmount <= 0) newErrors.amount = 'Geçerli tutar girin';
     if (category === 'payment' && !paymentMethod) newErrors.paymentMethod = 'Ödeme yöntemi seçin';
     setErrors(newErrors);
     if (Object.keys(newErrors).length > 0) return;
@@ -127,7 +128,7 @@ const FolioAddModal: React.FC<FolioAddModalProps> = ({ visible, onClose, onSave 
                 <Text style={styles.label}>Ödeme Yöntemi</Text>
                 {errors.paymentMethod ? <Text style={styles.errorText}>{errors.paymentMethod}</Text> : null}
                 <View style={styles.chipGrid}>
-                  {Object.entries(PAYMENT_METHOD_LABELS).map(([value, label]) => (
+                  {FOLIO_PAYMENT_METHODS.map(({ value, label }) => (
                     <TouchableOpacity
                       key={value}
                       style={[
